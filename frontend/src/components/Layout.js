@@ -1,56 +1,40 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { useState } from "react";
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
   const handleLogout = () => { logout(); navigate("/login"); };
-
-  const navItems = [
-    { to: "/dashboard", icon: "⬛", label: "Dashboard" },
-    { to: "/entry", icon: "＋", label: "Log Comeback" },
-    { to: "/log", icon: "≡", label: "All Comebacks" },
-    { to: "/report", icon: "▤", label: "Weekly Report" },
-  ];
-
   return (
-    <div className="app-layout">
-      <button className="hamburger" onClick={() => setSidebarOpen(true)}>☰</button>
-      <div className={`sidebar-overlay ${sidebarOpen ? "open" : ""}`} onClick={() => setSidebarOpen(false)} />
-      <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
-        <div className="sidebar-logo">
-          <div className="brand">MINI</div>
-          <div className="sub">Comeback Tracker</div>
-        </div>
-        <nav className="sidebar-nav">
-          <div className="nav-section-label">Navigation</div>
-          {navItems.map(item => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
-              onClick={() => setSidebarOpen(false)}
-            >
-              <span className="nav-icon">{item.icon}</span>
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-        <div className="sidebar-footer">
-          <div className="user-pill">
-            <div className="user-avatar">{user?.name?.[0] || "U"}</div>
-            <div className="user-info">
-              <div className="name">{user?.name}</div>
-              <div className="role">{user?.role}</div>
+    <div style={{ minHeight: "100vh", backgroundColor: "#0f1117", color: "#fff", fontFamily: "'Inter', 'Segoe UI', sans-serif" }}>
+      <header style={{ backgroundColor: "#111827", borderBottom: "1px solid #1f2937", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 1px 8px rgba(0,0,0,0.4)" }}>
+        <div style={{ maxWidth: 1400, margin: "0 auto", padding: "0 24px", height: 60, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg, #dc2626, #991b1b)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: "#fff" }}>DS</div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>DealerSuite</div>
+              <div style={{ fontSize: 10, color: "#6b7280", letterSpacing: "0.08em", textTransform: "uppercase" }}>Service Quality Tracker</div>
             </div>
           </div>
-          <button className="logout-btn" onClick={handleLogout}>Sign Out</button>
+          <nav style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            {[{ to: "/dashboard", label: "Dashboard" }, { to: "/entry", label: "Log Comeback" }, { to: "/log", label: "All Comebacks" }, { to: "/report", label: "Weekly Report" }].map(({ to, label }) => (
+              <NavLink key={to} to={to} style={({ isActive }) => ({ padding: "6px 14px", borderRadius: 6, fontSize: 13, fontWeight: 500, color: isActive ? "#fff" : "#9ca3af", backgroundColor: isActive ? "#dc2626" : "transparent", textDecoration: "none" })}>
+                {label}
+              </NavLink>
+            ))}
+          </nav>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {user && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 30, height: 30, borderRadius: "50%", backgroundColor: "#dc2626", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff" }}>{user.name ? user.name[0].toUpperCase() : "U"}</div>
+                <div><span style={{ fontSize: 12, fontWeight: 600, color: "#e5e7eb", display: "block" }}>{user.name}</span><span style={{ fontSize: 10, color: "#6b7280", textTransform: "capitalize" }}>{user.role}</span></div>
+              </div>
+            )}
+            <button onClick={handleLogout} style={{ padding: "6px 14px", backgroundColor: "transparent", border: "1px solid #374151", borderRadius: 6, color: "#9ca3af", fontSize: 12, cursor: "pointer" }}>Sign Out</button>
+          </div>
         </div>
-      </aside>
-      <main className="main-content">
+      </header>
+      <main style={{ maxWidth: 1400, margin: "0 auto", padding: "32px 24px" }}>
         <Outlet />
       </main>
     </div>
