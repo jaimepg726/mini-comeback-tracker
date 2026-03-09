@@ -170,6 +170,11 @@ def seed_defaults():
                 username="advisor", password="advisor1234",
                 full_name="Advisor", role="advisor"
             ))
+        if not crud.get_user_by_username(db, "foreman"):
+            crud.create_user(db, schemas.UserCreate(
+                username="foreman", password="foreman1234",
+                full_name="Foreman", role="foreman"
+            ))
         # Seed technicians
         techs = ["Jake", "Ernie", "Jeisson", "Michael", "Aaron"]
         for t in techs:
