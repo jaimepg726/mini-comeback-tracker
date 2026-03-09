@@ -3,10 +3,8 @@ import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 
 const CATEGORIES = [
-  "Diagnosis", "Electrical", "Engine", "Brake", "Suspension",
-  "Programming/Coding", "Oil/Leaks", "CBS Light Reset",
-  "Tire Pressure Reset / Tire PSI Incorrect",
-  "Tire/Brake Measurements Off", "Other"
+  "Diagnosis", "Electrical", "Engine", "Brake",
+  "Suspension", "Programming/Coding", "Oil/Leaks", "Other",
 ];
 
 const today = () => new Date().toISOString().split("T")[0];
@@ -28,8 +26,9 @@ export default function ComebackEntry() {
     root_cause: "",
     notes: "",
   });
-  const [status, setStatus] = useState(null); // "success" | "error"
+  const [status, setStatus] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [successCount, setSuccessCount] = useState(0);
 
   useEffect(() => {
     axios.get(`${API}/technicians`).then(r => setTechs(r.data));
@@ -37,21 +36,29 @@ export default function ComebackEntry() {
 
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSubmitting(true); setStatus(null);
+  const resetForm = () => setForm({
+    comeback_date: today(), original_repair_date: "",
+    ro_number: "", vin_last7: "", vehicle: "",
+    technician_name: form.technician_name,
+    original_repair: "", comeback_concern: "",
+    repair_category: "", fix_performed: "", root_cause: "", notes: "",
+  });
+
+  const handleSubmit = async () => {
+    if (!form.vehicle || !form.technician_name || !form.repair_category || !form.comeback_concern) {
+      setStatus("error");
+      return;
+    }
+    setSubmitting(true);
+    setStatus(null);
     try {
       const payload = { ...form };
       if (!payload.original_repair_date) delete payload.original_repair_date;
       await axios.post(`${API}/comebacks`, payload);
       setStatus("success");
-      setForm({
-        comeback_date: today(), original_repair_date: "",
-        ro_number: "", vin_last7: "", vehicle: "",
-        technician_name: "", original_repair: "",
-        comeback_concern: "", repair_category: "",
-        fix_performed: "", root_cause: "", notes: "",
-      });
+      setSuccessCount(n => n + 1);
+      resetForm();
+      setTimeout(() => setStatus(null), 4000);
     } catch {
       setStatus("error");
     } finally {
@@ -60,115 +67,156 @@ export default function ComebackEntry() {
   };
 
   const isAdvisor = user?.role === "advisor";
+  const isManager = user?.role === "manager";
 
   return (
     <>
+      {status === "success" && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, zIndex: 9999,
+          background: "#16a34a", color: "#fff",
+          padding: "16px 24px", fontSize: 16, fontWeight: 700,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+          animation: "slideDown 0.3s ease"
+        }}>
+          <span>✓ Comeback #{successCount} logged — repeat VIN check applied</span>
+          <button onClick={() => setStatus(null)} style={{ background: "none", border: "none", color: "#fff", fontSize: 20, cursor: "pointer" }}>×</button>
+        </div>
+      )}
+
       <div className="page-header">
         <div className="page-title">Log Comeback</div>
-        <div className="page-subtitle">Record a customer comeback — fill in as much detail as available</div>
+        <div className="page-subtitle">Required fields marked with *</div>
       </div>
+
       <div className="page-body">
-        {status === "success" && (
-          <div className="alert alert-success">✓ Comeback logged successfully. Repeat VIN detection applied automatically.</div>
-        )}
         {status === "error" && (
-          <div className="alert alert-error">✗ Failed to save. Check all required fields and try again.</div>
+          <div className="alert alert-error" style={{ marginBottom: 16 }}>
+            ✗ Fill in all required fields: Vehicle, Technician, Category, and Concern.
+          </div>
         )}
-        <form onSubmit={handleSubmit}>
-          <div className="card section-gap">
-            <div className="card-title">Intake Information</div>
-            <div className="form-grid">
-              <div className="form-group">
-                <label>Comeback Date *</label>
-                <input type="date" value={form.comeback_date} onChange={e => set("comeback_date", e.target.value)} required />
-              </div>
-              <div className="form-group">
-                <label>Original Repair Date</label>
-                <input type="date" value={form.original_repair_date} onChange={e => set("original_repair_date", e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>RO Number</label>
-                <input type="text" value={form.ro_number} onChange={e => set("ro_number", e.target.value)} placeholder="e.g. 123456" />
-              </div>
-              <div className="form-group">
-                <label>VIN Last 7</label>
-                <input
-                  type="text" maxLength={7} value={form.vin_last7}
-                  onChange={e => set("vin_last7", e.target.value.toUpperCase())}
-                  placeholder="e.g. AB12345"
-                />
-              </div>
-              <div className="form-group">
-                <label>Vehicle (Year / Model) *</label>
-                <input type="text" value={form.vehicle} onChange={e => set("vehicle", e.target.value)} placeholder="e.g. 2022 MINI Cooper S" required />
-              </div>
-              <div className="form-group">
-                <label>Technician *</label>
-                <select value={form.technician_name} onChange={e => set("technician_name", e.target.value)} required>
-                  <option value="">Select technician...</option>
-                  {techs.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
-                </select>
-              </div>
+
+        <div className="card section-gap">
+          <div className="card-title">Quick Entry</div>
+          <div className="form-grid">
+            <div className="form-group">
+              <label>Technician *</label>
+              <select value={form.technician_name} onChange={e => set("technician_name", e.target.value)}>
+                <option value="">Select technician...</option>
+                {techs.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Vehicle *</label>
+              <input type="text" value={form.vehicle} onChange={e => set("vehicle", e.target.value)} placeholder="e.g. 2022 MINI Cooper S" />
+            </div>
+            <div className="form-group">
+              <label>RO #</label>
+              <input type="text" value={form.ro_number} onChange={e => set("ro_number", e.target.value)} placeholder="e.g. 123456" />
+            </div>
+            <div className="form-group">
+              <label>VIN Last 7</label>
+              <input type="text" maxLength={7} value={form.vin_last7} onChange={e => set("vin_last7", e.target.value.toUpperCase())} placeholder="e.g. AB12345" style={{ textTransform: "uppercase" }} />
+            </div>
+            <div className="form-group">
+              <label>Comeback Date *</label>
+              <input type="date" value={form.comeback_date} onChange={e => set("comeback_date", e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Original Repair Date</label>
+              <input type="date" value={form.original_repair_date} onChange={e => set("original_repair_date", e.target.value)} />
             </div>
           </div>
+        </div>
 
-          <div className="card section-gap">
-            <div className="card-title">Repair Details</div>
-            <div className="form-grid">
-              <div className="form-group">
-                <label>Repair Category *</label>
-                <select value={form.repair_category} onChange={e => set("repair_category", e.target.value)} required>
-                  <option value="">Select category...</option>
-                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div className="form-group full">
-                <label>Original Repair Description</label>
-                <textarea value={form.original_repair} onChange={e => set("original_repair", e.target.value)} placeholder="What was performed on the original visit?" />
-              </div>
-              <div className="form-group full">
-                <label>Comeback Concern *</label>
-                <textarea value={form.comeback_concern} onChange={e => set("comeback_concern", e.target.value)} placeholder="What is the customer's concern on this visit?" required />
-              </div>
-            </div>
+        <div className="card section-gap">
+          <div className="card-title">Repair Category * — tap to select</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginTop: 8 }}>
+            {CATEGORIES.map(cat => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => set("repair_category", cat)}
+                style={{
+                  padding: "14px 10px",
+                  borderRadius: 8,
+                  border: form.repair_category === cat ? "2px solid #C7001E" : "2px solid var(--border)",
+                  background: form.repair_category === cat ? "rgba(199,0,30,0.15)" : "var(--gray-800)",
+                  color: form.repair_category === cat ? "#fff" : "var(--text-muted)",
+                  fontWeight: form.repair_category === cat ? 700 : 400,
+                  fontSize: 13, cursor: "pointer", transition: "all 0.15s",
+                  textAlign: "center", lineHeight: 1.3,
+                }}
+              >
+                {cat}
+              </button>
+            ))}
           </div>
-
-          {!isAdvisor && (
-            <div className="card section-gap">
-              <div className="card-title">Manager — Resolution Details</div>
-              <div className="form-grid">
-                <div className="form-group full">
-                  <label>Fix Performed</label>
-                  <textarea value={form.fix_performed} onChange={e => set("fix_performed", e.target.value)} placeholder="What was performed to resolve the comeback?" />
-                </div>
-                <div className="form-group full">
-                  <label>Root Cause</label>
-                  <textarea value={form.root_cause} onChange={e => set("root_cause", e.target.value)} placeholder="Identified root cause of the comeback" />
-                </div>
-                <div className="form-group full">
-                  <label>Notes</label>
-                  <textarea value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="Any additional notes" />
-                </div>
-              </div>
+          {form.repair_category && (
+            <div style={{ marginTop: 10, fontSize: 12, color: "#16a34a", fontWeight: 600 }}>
+              ✓ Selected: {form.repair_category}
             </div>
           )}
+        </div>
 
-          {isAdvisor && (
-            <div className="card section-gap">
-              <div className="card-title">Notes</div>
-              <div className="form-group">
-                <textarea value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="Any additional notes for the manager" />
+        <div className="card section-gap">
+          <div className="card-title">Concern Details</div>
+          <div className="form-grid">
+            <div className="form-group full">
+              <label>Comeback Concern * — what is the customer reporting?</label>
+              <textarea value={form.comeback_concern} onChange={e => set("comeback_concern", e.target.value)} placeholder="e.g. Same noise returning after brake job performed last week" rows={3} />
+            </div>
+            <div className="form-group full">
+              <label>Original Repair (optional)</label>
+              <textarea value={form.original_repair} onChange={e => set("original_repair", e.target.value)} placeholder="What was performed on the original visit?" rows={2} />
+            </div>
+          </div>
+        </div>
+
+        {isManager && (
+          <div className="card section-gap">
+            <div className="card-title">Resolution (Manager)</div>
+            <div className="form-grid">
+              <div className="form-group full">
+                <label>Fix Performed</label>
+                <textarea value={form.fix_performed} onChange={e => set("fix_performed", e.target.value)} placeholder="What resolved the comeback?" rows={2} />
+              </div>
+              <div className="form-group full">
+                <label>Root Cause</label>
+                <textarea value={form.root_cause} onChange={e => set("root_cause", e.target.value)} placeholder="Identified root cause" rows={2} />
+              </div>
+              <div className="form-group full">
+                <label>Notes</label>
+                <textarea value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="Any additional notes" rows={2} />
               </div>
             </div>
-          )}
-
-          <div className="flex-gap mt-4">
-            <button className="btn btn-primary" type="submit" disabled={submitting}>
-              {submitting ? "Saving..." : "Submit Comeback"}
-            </button>
           </div>
-        </form>
+        )}
+
+        {isAdvisor && (
+          <div className="card section-gap">
+            <div className="form-group">
+              <label>Notes (optional)</label>
+              <textarea value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="Notes for manager" rows={2} />
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 12, marginTop: 8, paddingBottom: 40 }}>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting} style={{ minWidth: 180, padding: "14px 24px", fontSize: 16 }}>
+            {submitting ? "Saving..." : "Submit Comeback"}
+          </button>
+          <button className="btn btn-ghost" onClick={resetForm} type="button">Clear Form</button>
+        </div>
       </div>
+
+      <style>{`
+        @keyframes slideDown {
+          from { transform: translateY(-100%); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+      `}</style>
     </>
   );
 }
