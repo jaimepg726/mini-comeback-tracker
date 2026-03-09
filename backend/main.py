@@ -74,8 +74,6 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 def read_me(current_user=Depends(get_current_user)):
     return current_user
 
-# --- Comebacks ---
-
 @app.post("/comebacks", response_model=schemas.ComebackOut)
 def create_comeback(comeback: schemas.ComebackCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     return crud.create_comeback(db, comeback, logged_by=current_user.username)
@@ -100,17 +98,13 @@ def delete_comeback(comeback_id: int, db: Session = Depends(get_db), current_use
     crud.delete_comeback(db, comeback_id)
     return {"ok": True}
 
-# --- Dashboard ---
-
 @app.get("/dashboard/summary")
 def dashboard_summary(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     return crud.get_dashboard_summary(db)
 
 @app.get("/dashboard/weekly-report")
-def weekly_report(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    return crud.get_weekly_report(db)
-
-# --- Technicians ---
+def weekly_report(start_date: str = None, end_date: str = None, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return crud.get_weekly_report(db, start_date=start_date, end_date=end_date)
 
 @app.get("/technicians", response_model=List[schemas.TechnicianOut])
 def list_technicians(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
@@ -122,23 +116,14 @@ def create_technician(tech: schemas.TechnicianCreate, db: Session = Depends(get_
         raise HTTPException(status_code=403, detail="Only managers can add technicians")
     return crud.create_technician(db, tech)
 
-# --- Seed default users ---
-
 @app.on_event("startup")
 def seed_defaults():
     db = SessionLocal()
     try:
         if not crud.get_user_by_username(db, "manager"):
-            crud.create_user(db, schemas.UserCreate(
-                username="manager", password="mini1234",
-                full_name="Jaime", role="manager"
-            ))
+            crud.create_user(db, schemas.UserCreate(username="manager", password="mini1234", full_name="Jaime", role="manager"))
         if not crud.get_user_by_username(db, "advisor"):
-            crud.create_user(db, schemas.UserCreate(
-                username="advisor", password="advisor1234",
-                full_name="Advisor", role="advisor"
-            ))
-        # Seed technicians
+            crud.create_user(db, schemas.UserCreate(username="advisor", password="advisor1234", full_name="Advisor", role="advisor"))
         techs = ["Jake", "Ernie", "Jeisson", "Michael", "Aaron"]
         for t in techs:
             if not crud.get_technician_by_name(db, t):
