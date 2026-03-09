@@ -17,6 +17,8 @@ export default function ComebackLog() {
   const [filterCat, setFilterCat] = useState("All Categories");
   const [filterRepeat, setFilterRepeat] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportSuccess, setExportSuccess] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -39,6 +41,29 @@ export default function ComebackLog() {
     load();
   };
 
+  const handleExportCSV = async () => {
+    setExporting(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API}/comebacks/export-csv`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `comebacks_export_${new Date().toISOString().split("T")[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setExportSuccess(true);
+      setTimeout(() => setExportSuccess(false), 3000);
+    } catch {
+      alert("Export failed. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const filtered = comebacks.filter(c => {
     if (filterTech !== "All" && c.technician_name !== filterTech) return false;
     if (filterCat !== "All Categories" && c.repair_category !== filterCat) return false;
@@ -46,26 +71,39 @@ export default function ComebackLog() {
     return true;
   });
 
-  if (loading) return <div className="loading-screen"><div className="spinner" /></div>;
-
   const fmtDate = (iso) => {
     if (!iso) return "—";
     const d = new Date(iso + "T00:00:00");
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   };
 
+  if (loading) return <div className="loading-screen"><div className="spinner" /></div>;
+
   return (
     <>
+      {exportSuccess && (
+        <div style={{ position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", background: "#166534", color: "#fff", padding: "12px 24px", borderRadius: 8, fontWeight: 600, fontSize: 14, zIndex: 9999, boxShadow: "0 4px 16px rgba(0,0,0,0.4)", whiteSpace: "nowrap" }}>
+          ✓ CSV downloaded successfully
+        </div>
+      )}
+
       <div className="page-header">
         <div className="flex-between">
           <div>
             <div className="page-title">Comeback Log</div>
             <div className="page-subtitle">{filtered.length} records shown</div>
           </div>
+          <button
+            onClick={handleExportCSV}
+            disabled={exporting || filtered.length === 0}
+            style={{ padding: "9px 18px", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: filtered.length === 0 ? "not-allowed" : "pointer", border: "1px solid rgba(199,0,30,0.4)", background: exportSuccess ? "#166534" : "rgba(199,0,30,0.12)", color: exportSuccess ? "#fff" : "#f87171", opacity: filtered.length === 0 ? 0.5 : 1, transition: "all 0.2s", display: "flex", alignItems: "center", gap: 6 }}
+          >
+            {exporting ? "Exporting…" : exportSuccess ? "✓ Downloaded" : "⬇ Export CSV"}
+          </button>
         </div>
       </div>
+
       <div className="page-body">
-        {/* Filters */}
         <div className="card section-gap">
           <div className="form-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
             <div className="form-group">
@@ -81,15 +119,10 @@ export default function ComebackLog() {
                 {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
-            <div className="form-group" style={{ justifyContent: "flex-end" }}>
+            <div className="form-group">
               <label>Repeat VINs Only</label>
               <label style={{ flexDirection: "row", alignItems: "center", gap: 8, cursor: "pointer", textTransform: "none", letterSpacing: 0, fontSize: 14, color: "var(--text)" }}>
-                <input
-                  type="checkbox"
-                  style={{ width: "auto" }}
-                  checked={filterRepeat}
-                  onChange={e => setFilterRepeat(e.target.checked)}
-                />
+                <input type="checkbox" style={{ width: "auto" }} checked={filterRepeat} onChange={e => setFilterRepeat(e.target.checked)} />
                 Show only repeat VINs
               </label>
             </div>
@@ -101,13 +134,7 @@ export default function ComebackLog() {
             <table>
               <thead>
                 <tr>
-                  <th>Date</th>
-                  <th>Technician</th>
-                  <th>RO #</th>
-                  <th>VIN</th>
-                  <th>Vehicle</th>
-                  <th>Category</th>
-                  <th>Flag</th>
+                  <th>Date</th><th>Technician</th><th>RO #</th><th>VIN</th><th>Vehicle</th><th>Category</th><th>Flag</th>
                   {user?.role === "manager" && <th>Actions</th>}
                 </tr>
               </thead>
@@ -117,26 +144,14 @@ export default function ComebackLog() {
                 )}
                 {filtered.map(c => (
                   <>
-                    <tr
-                      key={c.id}
-                      style={{ cursor: "pointer" }}
-                      onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}
-                    >
+                    <tr key={c.id} style={{ cursor: "pointer" }} onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}>
                       <td>{fmtDate(c.comeback_date)}</td>
                       <td style={{ fontWeight: 600 }}>{c.technician_name}</td>
                       <td className="text-muted">{c.ro_number || "—"}</td>
                       <td className="text-muted">{c.vin_last7 || "—"}</td>
                       <td>{c.vehicle || "—"}</td>
-                      <td>
-                        {c.repair_category
-                          ? <span className="badge badge-muted">{c.repair_category}</span>
-                          : "—"}
-                      </td>
-                      <td>
-                        {c.is_repeat_vin
-                          ? <span className="badge badge-danger">REPEAT VIN</span>
-                          : <span className="text-muted">—</span>}
-                      </td>
+                      <td>{c.repair_category ? <span className="badge badge-muted">{c.repair_category}</span> : "—"}</td>
+                      <td>{c.is_repeat_vin ? <span className="badge badge-danger">REPEAT VIN</span> : <span className="text-muted">—</span>}</td>
                       {user?.role === "manager" && (
                         <td onClick={e => e.stopPropagation()}>
                           <button className="btn btn-ghost" onClick={() => handleDelete(c.id)}>Delete</button>
