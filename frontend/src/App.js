@@ -1,17 +1,31 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import ComebackEntry from "./pages/ComebackEntry";
 import ComebackLog from "./pages/ComebackLog";
 import WeeklyReport from "./pages/WeeklyReport";
-import Layout from "./components/Layout";
+import ManageTechs from "./pages/ManageTechs";
+import Layout, { getRoleHome, canAccess } from "./components/Layout";
 import "./App.css";
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
+
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>;
-  return user ? children : <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/login" replace />;
+
+  if (!canAccess(user.role, location.pathname)) {
+    return <Navigate to={getRoleHome(user.role)} replace />;
+  }
+
+  return children;
+}
+
+function DefaultRedirect() {
+  const { user } = useAuth();
+  return <Navigate to={getRoleHome(user?.role)} replace />;
 }
 
 export default function App() {
@@ -21,12 +35,14 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="entry" element={<ComebackEntry />} />
-            <Route path="log" element={<ComebackLog />} />
-            <Route path="report" element={<WeeklyReport />} />
+            <Route index element={<DefaultRedirect />} />
+            <Route path="dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="entry"     element={<ProtectedRoute><ComebackEntry /></ProtectedRoute>} />
+            <Route path="log"       element={<ProtectedRoute><ComebackLog /></ProtectedRoute>} />
+            <Route path="report"    element={<ProtectedRoute><WeeklyReport /></ProtectedRoute>} />
+            <Route path="techs"     element={<ProtectedRoute><ManageTechs /></ProtectedRoute>} />
           </Route>
+          <Route path="*" element={<DefaultRedirect />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
