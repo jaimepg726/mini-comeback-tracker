@@ -134,7 +134,13 @@ export default function ComebackLog() {
             <table>
               <thead>
                 <tr>
-                  <th>Date</th><th>Technician</th><th>RO #</th><th>VIN</th><th>Vehicle</th><th>Category</th><th>Flag</th>
+                  <th>Date</th>
+                  <th>Technician</th>
+                  <th>RO #</th>
+                  <th>VIN</th>
+                  <th>Vehicle</th>
+                  <th>Category</th>
+                  <th>Flag</th>
                   {user?.role === "manager" && <th>Actions</th>}
                 </tr>
               </thead>
