@@ -63,7 +63,6 @@ def create_comeback(db: Session, comeback: schemas.ComebackCreate, logged_by: st
     )
     db.add(db_cb)
     db.commit()
-    # If this VIN now has 2+ records, flag all of them
     if comeback.vin_last7:
         _update_repeat_flags(db, comeback.vin_last7)
     db.refresh(db_cb)
@@ -119,17 +118,13 @@ def get_dashboard_summary(db: Session):
             "repeat_vins": sum(1 for c in tech_cbs if c.is_repeat_vin),
         })
 
-    # Category counts
     category_counts = {}
     for cat in CATEGORIES:
         count = sum(1 for c in all_cbs if c.repair_category == cat)
         category_counts[cat] = count
 
-    # Recent comebacks (last 30 days)
     cutoff = date.today() - timedelta(days=30)
     recent = [c for c in all_cbs if c.comeback_date >= cutoff]
-
-    # Repeat VINs
     repeat_vins = list(set(c.vin_last7 for c in all_cbs if c.is_repeat_vin and c.vin_last7))
 
     return {
@@ -152,9 +147,18 @@ def get_dashboard_summary(db: Session):
         ]
     }
 
-def get_weekly_report(db: Session):
-    cutoff = date.today() - timedelta(days=7)
-    week_cbs = db.query(models.Comeback).filter(models.Comeback.comeback_date >= cutoff).all()
+def get_weekly_report(db: Session, start_date=None, end_date=None):
+    if start_date and end_date:
+        cutoff = start_date if not isinstance(start_date, str) else date.fromisoformat(start_date)
+        end = end_date if not isinstance(end_date, str) else date.fromisoformat(end_date)
+    else:
+        end = date.today()
+        weekday = end.weekday()
+        cutoff = end - timedelta(days=weekday)
+    week_cbs = db.query(models.Comeback).filter(
+        models.Comeback.comeback_date >= cutoff,
+        models.Comeback.comeback_date <= end
+    ).all()
 
     by_tech = {}
     for c in week_cbs:
@@ -169,7 +173,7 @@ def get_weekly_report(db: Session):
 
     return {
         "week_start": str(cutoff),
-        "week_end": str(date.today()),
+        "week_end": str(end),
         "total_comebacks": len(week_cbs),
         "by_technician": {k: len(v) for k, v in by_tech.items()},
         "by_category": by_category,
