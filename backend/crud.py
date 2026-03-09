@@ -11,25 +11,16 @@ CATEGORIES = [
     "Tire/Brake Measurements Off", "Other"
 ]
 
-# --- Users ---
-
 def get_user_by_username(db: Session, username: str):
     return db.query(models.User).filter(models.User.username == username).first()
 
 def create_user(db: Session, user: schemas.UserCreate):
     hashed = bcrypt.hashpw(user.password.encode(), bcrypt.gensalt()).decode()
-    db_user = models.User(
-        username=user.username,
-        full_name=user.full_name,
-        role=user.role,
-        hashed_password=hashed
-    )
+    db_user = models.User(username=user.username, full_name=user.full_name, role=user.role, hashed_password=hashed)
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
     return db_user
-
-# --- Technicians ---
 
 def get_technicians(db: Session):
     return db.query(models.Technician).all()
@@ -51,8 +42,6 @@ def delete_technician(db: Session, tech_id: int):
         db.commit()
     return tech
 
-# --- Comebacks ---
-
 def _check_repeat_vin(db: Session, vin_last7: str, exclude_id: int = None) -> bool:
     if not vin_last7:
         return False
@@ -63,11 +52,7 @@ def _check_repeat_vin(db: Session, vin_last7: str, exclude_id: int = None) -> bo
 
 def create_comeback(db: Session, comeback: schemas.ComebackCreate, logged_by: str):
     is_repeat = _check_repeat_vin(db, comeback.vin_last7)
-    db_cb = models.Comeback(
-        **comeback.dict(),
-        is_repeat_vin=is_repeat,
-        logged_by=logged_by
-    )
+    db_cb = models.Comeback(**comeback.dict(), is_repeat_vin=is_repeat, logged_by=logged_by)
     db.add(db_cb)
     db.commit()
     if comeback.vin_last7:
@@ -110,8 +95,6 @@ def delete_comeback(db: Session, comeback_id: int):
         if vin:
             _update_repeat_flags(db, vin)
 
-# --- Dashboard ---
-
 def get_dashboard_summary(db: Session):
     all_cbs = db.query(models.Comeback).all()
     techs = db.query(models.Technician).all()
@@ -134,10 +117,19 @@ def get_dashboard_summary(db: Session):
     recent = [c for c in all_cbs if c.comeback_date >= cutoff]
     repeat_vins = list(set(c.vin_last7 for c in all_cbs if c.is_repeat_vin and c.vin_last7))
 
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())
+    prev_week_start = week_start - timedelta(days=7)
+    prev_week_end = week_start - timedelta(days=1)
+    this_week_cbs = [c for c in all_cbs if c.comeback_date >= week_start]
+    prev_week_cbs = [c for c in all_cbs if prev_week_start <= c.comeback_date <= prev_week_end]
+
     return {
         "total_comebacks": len(all_cbs),
         "total_last_30_days": len(recent),
         "repeat_vin_count": len(repeat_vins),
+        "this_week_count": len(this_week_cbs),
+        "prev_week_count": len(prev_week_cbs),
         "technician_stats": tech_stats,
         "category_counts": category_counts,
         "recent_comebacks": [
@@ -199,3 +191,11 @@ def get_weekly_report(db: Session, start_date=None, end_date=None):
             for c in sorted(week_cbs, key=lambda x: x.comeback_date, reverse=True)
         ]
     }
+
+def get_comebacks_csv(db: Session, start_date=None, end_date=None):
+    q = db.query(models.Comeback)
+    if start_date:
+        q = q.filter(models.Comeback.comeback_date >= date.fromisoformat(start_date))
+    if end_date:
+        q = q.filter(models.Comeback.comeback_date <= date.fromisoformat(end_date))
+    return q.order_by(models.Comeback.comeback_date.desc()).all()
