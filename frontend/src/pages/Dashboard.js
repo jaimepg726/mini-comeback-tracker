@@ -25,6 +25,12 @@ export default function Dashboard() {
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>;
   if (!data) return null;
 
+  const fmtDate = (iso) => {
+    if (!iso) return "—";
+    const d = new Date(iso + "T00:00:00");
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  };
+
   const categoryData = Object.entries(data.category_counts)
     .filter(([, v]) => v > 0)
     .sort((a, b) => b[1] - a[1])
@@ -165,7 +171,7 @@ export default function Dashboard() {
                 <tbody>
                   {data.recent_comebacks.map(c => (
                     <tr key={c.id}>
-                      <td>{c.comeback_date}</td>
+                      <td>{fmtDate(c.comeback_date)}</td>
                       <td style={{ fontWeight: 600 }}>{c.technician_name}</td>
                       <td>{c.vehicle || "—"}</td>
                       <td>
