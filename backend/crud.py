@@ -44,6 +44,13 @@ def create_technician(db: Session, tech: schemas.TechnicianCreate):
     db.refresh(db_tech)
     return db_tech
 
+def delete_technician(db: Session, tech_id: int):
+    tech = db.query(models.Technician).filter(models.Technician.id == tech_id).first()
+    if tech:
+        db.delete(tech)
+        db.commit()
+    return tech
+
 # --- Comebacks ---
 
 def _check_repeat_vin(db: Session, vin_last7: str, exclude_id: int = None) -> bool:
