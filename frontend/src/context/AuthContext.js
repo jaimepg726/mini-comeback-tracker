@@ -5,18 +5,26 @@ const AuthContext = createContext(null);
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
+// Set auth header immediately on module load so first API calls are authenticated
+const storedToken = localStorage.getItem("token");
+if (storedToken) {
+  axios.defaults.headers.common["Authorization"] = `Bearer ${storedToken}`;
+}
+
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem("token"));
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(() => {
+    const stored = localStorage.getItem("userInfo");
+    return stored ? JSON.parse(stored) : null;
+  });
+  const [token, setToken] = useState(storedToken);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (token) {
       axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-      const stored = localStorage.getItem("userInfo");
-      if (stored) setUser(JSON.parse(stored));
+    } else {
+      delete axios.defaults.headers.common["Authorization"];
     }
-    setLoading(false);
   }, [token]);
 
   const login = async (username, password) => {
