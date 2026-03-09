@@ -19,15 +19,18 @@ export default function ComebackLog() {
   const [expandedId, setExpandedId] = useState(null);
 
   const load = () => {
-    axios.get(`${API}/comebacks?limit=500`).then(r => {
-      setComebacks(r.data);
-      setLoading(false);
-    });
+    setLoading(true);
+    axios.get(`${API}/comebacks?limit=500`)
+      .then(r => setComebacks(r.data))
+      .catch(() => setComebacks([]))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     load();
-    axios.get(`${API}/technicians`).then(r => setTechs(r.data));
+    axios.get(`${API}/technicians`)
+      .then(r => setTechs(r.data))
+      .catch(() => setTechs([]));
   }, [API]);
 
   const handleDelete = async (id) => {
@@ -44,6 +47,12 @@ export default function ComebackLog() {
   });
 
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>;
+
+  const fmtDate = (iso) => {
+    if (!iso) return "—";
+    const d = new Date(iso + "T00:00:00");
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  };
 
   return (
     <>
@@ -113,7 +122,7 @@ export default function ComebackLog() {
                       style={{ cursor: "pointer" }}
                       onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}
                     >
-                      <td>{c.comeback_date}</td>
+                      <td>{fmtDate(c.comeback_date)}</td>
                       <td style={{ fontWeight: 600 }}>{c.technician_name}</td>
                       <td className="text-muted">{c.ro_number || "—"}</td>
                       <td className="text-muted">{c.vin_last7 || "—"}</td>
@@ -138,7 +147,7 @@ export default function ComebackLog() {
                       <tr key={`${c.id}-expand`}>
                         <td colSpan={8} style={{ background: "var(--gray-800)", padding: "16px 20px" }}>
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px 24px" }}>
-                            <DetailField label="Original Repair Date" value={c.original_repair_date || "—"} />
+                            <DetailField label="Original Repair Date" value={fmtDate(c.original_repair_date)} />
                             <DetailField label="Logged By" value={c.logged_by || "—"} />
                             <DetailField label="Original Repair" value={c.original_repair || "—"} />
                             <DetailField label="Comeback Concern" value={c.comeback_concern || "—"} />
