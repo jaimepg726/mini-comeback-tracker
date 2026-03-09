@@ -74,6 +74,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 def read_me(current_user=Depends(get_current_user)):
     return current_user
 
+# --- Comebacks ---
+
 @app.post("/comebacks", response_model=schemas.ComebackOut)
 def create_comeback(comeback: schemas.ComebackCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     return crud.create_comeback(db, comeback, logged_by=current_user.username)
@@ -98,13 +100,40 @@ def delete_comeback(comeback_id: int, db: Session = Depends(get_db), current_use
     crud.delete_comeback(db, comeback_id)
     return {"ok": True}
 
+# --- Dashboard ---
+
 @app.get("/dashboard/summary")
 def dashboard_summary(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     return crud.get_dashboard_summary(db)
 
+@app.get("/comebacks/export-csv")
+def export_comebacks_csv(start_date: str = None, end_date: str = None, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    import csv, io
+    from fastapi.responses import StreamingResponse
+    rows = crud.get_comebacks_csv(db, start_date=start_date, end_date=end_date)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Date", "RO Number", "Technician", "Vehicle", "VIN Last 7", "Category", "Concern", "Repeat VIN", "Logged By"])
+    for c in rows:
+        writer.writerow([
+            str(c.comeback_date), c.ro_number or "", c.technician_name,
+            c.vehicle or "", c.vin_last7 or "", c.repair_category or "",
+            c.comeback_concern or "", "Yes" if c.is_repeat_vin else "No",
+            c.logged_by or ""
+        ])
+    output.seek(0)
+    filename = f"comebacks_{start_date or 'all'}_{end_date or 'all'}.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
 @app.get("/dashboard/weekly-report")
 def weekly_report(start_date: str = None, end_date: str = None, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     return crud.get_weekly_report(db, start_date=start_date, end_date=end_date)
+
+# --- Technicians ---
 
 @app.get("/technicians", response_model=List[schemas.TechnicianOut])
 def list_technicians(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
@@ -116,14 +145,32 @@ def create_technician(tech: schemas.TechnicianCreate, db: Session = Depends(get_
         raise HTTPException(status_code=403, detail="Only managers can add technicians")
     return crud.create_technician(db, tech)
 
+@app.delete("/technicians/{tech_id}")
+def delete_technician(tech_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user.role != "manager":
+        raise HTTPException(status_code=403, detail="Only managers can remove technicians")
+    tech = crud.delete_technician(db, tech_id)
+    if not tech:
+        raise HTTPException(status_code=404, detail="Technician not found")
+    return {"ok": True}
+
+# --- Seed default users ---
+
 @app.on_event("startup")
 def seed_defaults():
     db = SessionLocal()
     try:
         if not crud.get_user_by_username(db, "manager"):
-            crud.create_user(db, schemas.UserCreate(username="manager", password="mini1234", full_name="Jaime", role="manager"))
+            crud.create_user(db, schemas.UserCreate(
+                username="manager", password="mini1234",
+                full_name="Jaime", role="manager"
+            ))
         if not crud.get_user_by_username(db, "advisor"):
-            crud.create_user(db, schemas.UserCreate(username="advisor", password="advisor1234", full_name="Advisor", role="advisor"))
+            crud.create_user(db, schemas.UserCreate(
+                username="advisor", password="advisor1234",
+                full_name="Advisor", role="advisor"
+            ))
+        # Seed technicians
         techs = ["Jake", "Ernie", "Jeisson", "Michael", "Aaron"]
         for t in techs:
             if not crud.get_technician_by_name(db, t):
