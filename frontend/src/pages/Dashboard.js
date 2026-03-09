@@ -149,9 +149,15 @@ export default function Dashboard() {
                 {data.technician_stats.sort((a, b) => b.comebacks - a.comebacks).map(t => (
                   <tr key={t.technician}>
                     <td style={{ fontWeight: 600 }}>{t.technician}</td>
-                    <td><span className={`badge ${t.comebacks > 3 ? "badge-danger" : t.comebacks > 0 ? "badge-muted" : "badge-success"}`}>{t.comebacks}</span></td>
-                    <td>{t.repeat_vins > 0 ? <span className="badge badge-danger">{t.repeat_vins}</span> : <span className="text-muted">—</span>}</td>
-                    <td>{t.comebacks === 0 ? <span className="badge badge-success">Clean</span> : t.repeat_vins > 0 ? <span className="badge badge-danger">Repeat VIN</span> : <span className="badge badge-muted">Monitor</span>}</td>
+                    <td>
+                      <span className={`badge ${t.comebacks > 3 ? "badge-danger" : t.comebacks > 0 ? "badge-muted" : "badge-success"}`}>{t.comebacks}</span>
+                    </td>
+                    <td>
+                      {t.repeat_vins > 0 ? <span className="badge badge-danger">{t.repeat_vins}</span> : <span className="text-muted">—</span>}
+                    </td>
+                    <td>
+                      {t.comebacks === 0 ? <span className="badge badge-success">Clean</span> : t.repeat_vins > 0 ? <span className="badge badge-danger">Repeat VIN</span> : <span className="badge badge-muted">Monitor</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -166,7 +172,15 @@ export default function Dashboard() {
           ) : (
             <div className="table-wrap">
               <table>
-                <thead><tr><th>Date</th><th>Technician</th><th>Vehicle</th><th>Category</th><th>Flag</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Technician</th>
+                    <th>Vehicle</th>
+                    <th>Category</th>
+                    <th>Flag</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {data.recent_comebacks.map(c => (
                     <tr key={c.id}>
