@@ -12,7 +12,7 @@ import models, schemas, crud
 
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="MINI Comeback Tracker")
+app = FastAPI(title="DealerSuite - Service Quality Tracker")
 
 app.add_middleware(
     CORSMiddleware,
@@ -137,13 +137,39 @@ def weekly_report(start_date: str = None, end_date: str = None, db: Session = De
 
 @app.get("/technicians", response_model=List[schemas.TechnicianOut])
 def list_technicians(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """Active technicians only — used by dropdowns and filters."""
     return crud.get_technicians(db)
+
+@app.get("/technicians/all", response_model=List[schemas.TechnicianOut])
+def list_all_technicians(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """All technicians including inactive — used by ManageTechs page."""
+    if current_user.role != "manager":
+        raise HTTPException(status_code=403, detail="Manager access required")
+    return crud.get_all_technicians(db)
 
 @app.post("/technicians", response_model=schemas.TechnicianOut)
 def create_technician(tech: schemas.TechnicianCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user.role != "manager":
         raise HTTPException(status_code=403, detail="Only managers can add technicians")
     return crud.create_technician(db, tech)
+
+@app.patch("/technicians/{tech_id}/deactivate", response_model=schemas.TechnicianOut)
+def deactivate_technician(tech_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user.role != "manager":
+        raise HTTPException(status_code=403, detail="Manager access required")
+    tech = crud.deactivate_technician(db, tech_id)
+    if not tech:
+        raise HTTPException(status_code=404, detail="Technician not found")
+    return tech
+
+@app.patch("/technicians/{tech_id}/reactivate", response_model=schemas.TechinicianOut)
+def reactivate_technician(tech_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user.role != "manager":
+        raise HTTPException(status_code=403, detail="Manager access required")
+    tech = crud.reactivate_technician(db, tech_id)
+    if not tech:
+        raise HTTPException(status_code=404, detail="Technician not found")
+    return tech
 
 @app.delete("/technicians/{tech_id}")
 def delete_technician(tech_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
@@ -154,7 +180,41 @@ def delete_technician(tech_id: int, db: Session = Depends(get_db), current_user=
         raise HTTPException(status_code=404, detail="Technician not found")
     return {"ok": True}
 
-# --- Seed default users ---
+# --- Migration runner (runs before seed) ---
+
+@app.on_event("startup")
+def run_migrations():
+    import sqlite3
+    import logging
+    try:
+        db_path = str(engine.url.database)
+        conn = sqlite3.connect(db_path, check_same_thread=False)
+        cursor = conn.cursor()
+
+        cursor.execute("PRAGMA table_info(technicians)")
+        cols = [row[1] for row in cursor.fetchall()]
+        if "is_active" not in cols:
+            cursor.execute(
+                "ALTER TABLE technicians ADD COLUMN is_active BOOLEAN DEFAULT 1 NOT NULL"
+            )
+            logging.info("Migration: added is_active column to technicians")
+
+        cursor.execute("PRAGMA table_info(comebacks)")
+        cols = [row[1] for row in cursor.fetchall()]
+        if "is_demo" not in cols:
+            cursor.execute(
+                "ALTER TABLE comebacks ADD COLUMN is_demo BOOLEAN DEFAULT 0 NOT NULL"
+            )
+            logging.info("Migration: added is_demo column to comebacks")
+
+        conn.commit()
+        conn.close()
+        logging.info("Migration check complete.")
+
+    except Exception as e:
+        logging.error(f"Migration runner failed (non-fatal): {e}")
+
+# --- Seed default users and technicians ---
 
 @app.on_event("startup")
 def seed_defaults():
@@ -175,8 +235,9 @@ def seed_defaults():
                 username="foreman", password="foreman1234",
                 full_name="Foreman", role="foreman"
             ))
-        # Seed technicians
-        techs = ["Jake", "Ernie", "Jeisson", "Michael", "Aaron"]
+        # Seed active technician list — Aaron intentionally excluded
+        # If Aaron exists in DB already, he remains untouched (historical records preserved)
+        techs = ["Jake", "Ernie", "Jeisson", "Michael", "Manny"]
         for t in techs:
             if not crud.get_technician_by_name(db, t):
                 crud.create_technician(db, schemas.TechnicianCreate(name=t, role="Technician"))
