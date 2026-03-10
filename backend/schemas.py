@@ -25,11 +25,13 @@ class UserOut(BaseModel):
 class TechnicianCreate(BaseModel):
     name: str
     role: Optional[str] = "Technician"
+    is_active: bool = True
 
 class TechnicianOut(BaseModel):
     id: int
     name: str
     role: str
+    is_active: bool
     class Config:
         from_attributes = True
 
@@ -76,6 +78,7 @@ class ComebackOut(BaseModel):
     root_cause: Optional[str]
     notes: Optional[str]
     is_repeat_vin: bool
+    is_demo: bool
     logged_by: Optional[str]
     created_at: datetime
     class Config:
