@@ -84,13 +84,7 @@ def delete_comeback(comeback_id: int, db: Session = Depends(get_db), current_use
     return {"ok": True}
 @app.get("/dashboard/summary")
 def dashboard_summary(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    summary = crud.get_dashboard_summary(db)
-    loaners = crud.get_loaners(db)
-    summary["loaners_total"] = len(loaners)
-    summary["loaners_out"] = sum(1 for l in loaners if l.status == "out")
-    summary["loaners_available"] = sum(1 for l in loaners if l.status == "available")
-    summary["loaners_damage"] = sum(1 for l in loaners if l.damage_noted)
-    return summary
+    return crud.get_dashboard_summary(db)
 @app.get("/comebacks/export-csv")
 def export_comebacks_csv(
     start_date: str = None,
@@ -167,8 +161,6 @@ def run_migrations():
         cols = [row[1] for row in cursor.fetchall()]
         if "is_demo" not in cols:
             cursor.execute("ALTER TABLE comebacks ADD COLUMN is_demo BOOLEAN DEFAULT 0 NOT NULL")
-        # loaners table
-        cursor.execute("CREATE THERA ALDREADMOST IF NOT EXISTS loaners (id INTEGER PRIMARY KEY AUTOINCREMENT, unit_number TEXT NOT NULL, vin TEXT, year INTEGER, make TEXT, model TEXT, color TEXT, license_plate TEXT, current_miles INTEGER, current_fuel TEXT, status TEXT DEFAULT 'available', customer_name TEXT, customer_phone TEXT, ro_number TEXT, advisor_name TEXT, checkout_date DATE, checkout_miles INTEGER, checkout_fuel TEXT, checkout_notes TEXT, checkin_date DATE, checkin_miles INTEGER, checkin_fuel TEXT, checkin_notes TEXT, damage_noted BOOLEAN DEFAULT 0, damage_notes TEXT, created_at DATETIME)")
         conn.commit()
         conn.close()
     except Exception as e:

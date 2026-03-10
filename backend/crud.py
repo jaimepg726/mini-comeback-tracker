@@ -159,39 +159,3 @@ def get_comebacks_csv(db, start_date=None, end_date=None, technician=None, categ
     if repeat_only:
         q = q.filter(models.Comeback.is_repeat_vin == True)
     return q.order_by(models.Comeback.comeback_date.desc()).all()
-
-
-# --- Loaners ---
-def get_loaners(db):
-    return db.query(models.Loaner).order_by(models.Loaner.unit_number).all()
-
-def get_loaner(db, loaner_id):
-    return db.query(models.Loaner).filter(models.Loaner.id == loaner_id).first()
-
-def create_loaner(db, data):
-    obj = models.Loaner(**data.dict())
-    db.add(obj); db.commit(); db.refresh(obj)
-    return obj
-
-def checkout_loaner(db, loaner_id, data):
-    obj = get_loaner(db, loaner_id)
-    if not obj: return None
-    for k, v in data.dict().items(): setattr(obj, k, v)
-    obj.status = "out"
-    db.commit(); db.refresh(obj)
-    return obj
-
-def checkin_loaner(db, loaner_id, data):
-    obj = get_loaner(db, loaner_id)
-    if not obj: return None
-    for k, v in data.dict().items(): setattr(obj, k, v)
-    obj.status = "available"
-    obj.current_miles = data.checkin_miles or obj.current_miles
-    obj.current_fuel  = data.checkin_fuel  or obj.current_fuel
-    db.commit(); db.refresh(obj)
-    return obj
-
-def delete_loaner(db, loaner_id):
-    obj = get_loaner(db, loaner_id)
-    if obj: db.delete(obj); db.commit()
-    return obj
