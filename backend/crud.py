@@ -32,17 +32,38 @@ def create_user(db: Session, user: schemas.UserCreate):
 # --- Technicians ---
 
 def get_technicians(db: Session):
+    """Returns only active technicians. Used by dropdowns and filters."""
+    return db.query(models.Technician).filter(models.Technician.is_active == True).all()
+
+def get_all_technicians(db: Session):
+    """Returns all technicians including inactive. Used by ManageTechs page."""
     return db.query(models.Technician).all()
 
 def get_technician_by_name(db: Session, name: str):
     return db.query(models.Technician).filter(models.Technician.name == name).first()
 
 def create_technician(db: Session, tech: schemas.TechnicianCreate):
-    db_tech = models.Technician(name=tech.name, role=tech.role)
+    db_tech = models.Technician(name=tech.name, role=tech.role, is_active=tech.is_active)
     db.add(db_tech)
     db.commit()
     db.refresh(db_tech)
     return db_tech
+
+def deactivate_technician(db: Session, tech_id: int):
+    tech = db.query(models.Technician).filter(models.Technician.id == tech_id).first()
+    if tech:
+        tech.is_active = False
+        db.commit()
+        db.refresh(tech)
+    return tech
+
+def reactivate_technician(db: Session, tech_id: int):
+    tech = db.query(models.Technician).filter(models.Technician.id == tech_id).first()
+    if tech:
+        tech.is_active = True
+        db.commit()
+        db.refresh(tech)
+    return tech
 
 def delete_technician(db: Session, tech_id: int):
     tech = db.query(models.Technician).filter(models.Technician.id == tech_id).first()
@@ -54,9 +75,13 @@ def delete_technician(db: Session, tech_id: int):
 # --- Comebacks ---
 
 def _check_repeat_vin(db: Session, vin_last7: str, exclude_id: int = None) -> bool:
+    """Check for repeat VIN against real records only (excludes demo data)."""
     if not vin_last7:
         return False
-    q = db.query(models.Comeback).filter(models.Comeback.vin_last7 == vin_last7)
+    q = db.query(models.Comeback).filter(
+        models.Comeback.vin_last7 == vin_last7,
+        models.Comeback.is_demo == False
+    )
     if exclude_id:
         q = q.filter(models.Comeback.id != exclude_id)
     return q.count() > 0
@@ -76,14 +101,26 @@ def create_comeback(db: Session, comeback: schemas.ComebackCreate, logged_by: st
     return db_cb
 
 def _update_repeat_flags(db: Session, vin_last7: str):
-    records = db.query(models.Comeback).filter(models.Comeback.vin_last7 == vin_last7).all()
+    """Update repeat VIN flags for real records only. Demo records are excluded."""
+    records = db.query(models.Comeback).filter(
+        models.Comeback.vin_last7 == vin_last7,
+        models.Comeback.is_demo == False
+    ).all()
     is_repeat = len(records) > 1
     for r in records:
         r.is_repeat_vin = is_repeat
     db.commit()
 
 def get_comebacks(db: Session, skip: int = 0, limit: int = 200):
-    return db.query(models.Comeback).order_by(models.Comeback.comeback_date.desc()).offset(skip).limit(limit).all()
+    """Returns real comebacks only. Demo records excluded."""
+    return (
+        db.query(models.Comeback)
+        .filter(models.Comeback.is_demo == False)
+        .order_by(models.Comeback.comeback_date.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 def update_comeback(db: Session, comeback_id: int, update: schemas.ComebackUpdate):
     cb = db.query(models.Comeback).filter(models.Comeback.id == comeback_id).first()
@@ -113,7 +150,8 @@ def delete_comeback(db: Session, comeback_id: int):
 # --- Dashboard ---
 
 def get_dashboard_summary(db: Session):
-    all_cbs = db.query(models.Comeback).all()
+    """All counts exclude demo records."""
+    all_cbs = db.query(models.Comeback).filter(models.Comeback.is_demo == False).all()
     techs = db.query(models.Technician).all()
 
     tech_stats = []
@@ -141,15 +179,13 @@ def get_dashboard_summary(db: Session):
     prev_week_end = week_start - timedelta(days=1)
     this_week_cbs = [c for c in all_cbs if c.comeback_date >= week_start]
     prev_week_cbs = [c for c in all_cbs if prev_week_start <= c.comeback_date <= prev_week_end]
-    this_week_count = len(this_week_cbs)
-    prev_week_count = len(prev_week_cbs)
 
     return {
         "total_comebacks": len(all_cbs),
         "total_last_30_days": len(recent),
         "repeat_vin_count": len(repeat_vins),
-        "this_week_count": this_week_count,
-        "prev_week_count": prev_week_count,
+        "this_week_count": len(this_week_cbs),
+        "prev_week_count": len(prev_week_cbs),
         "technician_stats": tech_stats,
         "category_counts": category_counts,
         "recent_comebacks": [
@@ -167,17 +203,19 @@ def get_dashboard_summary(db: Session):
     }
 
 def get_weekly_report(db: Session, start_date=None, end_date=None):
+    """All weekly data excludes demo records."""
     if start_date and end_date:
         cutoff = start_date if not isinstance(start_date, str) else date.fromisoformat(start_date)
         end = end_date if not isinstance(end_date, str) else date.fromisoformat(end_date)
     else:
         end = date.today()
-        cutoff = end - timedelta(days=6)
         weekday = end.weekday()
         cutoff = end - timedelta(days=weekday)
+
     week_cbs = db.query(models.Comeback).filter(
         models.Comeback.comeback_date >= cutoff,
-        models.Comeback.comeback_date <= end
+        models.Comeback.comeback_date <= end,
+        models.Comeback.is_demo == False
     ).all()
 
     by_tech = {}
@@ -214,7 +252,8 @@ def get_weekly_report(db: Session, start_date=None, end_date=None):
     }
 
 def get_comebacks_csv(db: Session, start_date=None, end_date=None):
-    q = db.query(models.Comeback)
+    """CSV export excludes demo records."""
+    q = db.query(models.Comeback).filter(models.Comeback.is_demo == False)
     if start_date:
         q = q.filter(models.Comeback.comeback_date >= date.fromisoformat(start_date))
     if end_date:
