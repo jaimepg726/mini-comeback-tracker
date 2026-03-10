@@ -2,11 +2,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 
-const CATEGORIES = [
-  "All Categories", "Diagnosis", "Electrical", "Engine", "Brake", "Suspension",
-  "Programming/Coding", "Oil/Leaks", "CBS Light Reset",
-  "Tire Pressure Reset / Tire PSI Incorrect", "Tire/Brake Measurements Off", "Other"
-];
+const CATEGORIES = ["All Categories","Diagnosis","Electrical","Engine","Brake","Suspension","Programming/Coding","Oil/Leaks","CBS Light Reset","Tire Pressure Reset / Tire PSI Incorrect","Tire/Brake Measurements Off","Other"];
 
 export default function ComebackLog() {
   const { API, user } = useAuth();
@@ -30,9 +26,7 @@ export default function ComebackLog() {
 
   useEffect(() => {
     load();
-    axios.get(`${API}/technicians`)
-      .then(r => setTechs(r.data))
-      .catch(() => setTechs([]));
+    axios.get(`${API}/technicians`).then(r => setTechs(r.data)).catch(() => setTechs([]));
   }, [API]);
 
   const handleDelete = async (id) => {
@@ -45,14 +39,20 @@ export default function ComebackLog() {
     setExporting(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API}/comebacks/export-csv`, {
+      const params = new URLSearchParams();
+      if (filterTech !== "All") params.append("technician", filterTech);
+      if (filterCat !== "All Categories") params.append("category", filterCat);
+      if (filterRepeat) params.append("repeat_only", "true");
+      const res = await fetch(`${API}/comebacks/export-csv?${params}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      if (!res.ok) throw new Error("Export failed");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `comebacks_export_${new Date().toISOString().split("T")[0]}.csv`;
+      const techSuffix = filterTech !== "All" ? `_${filterTech}` : "";
+      a.download = `comebacks${techSuffix}_${new Date().toISOString().split("T")[0]}.csv`;
       a.click();
       URL.revokeObjectURL(url);
       setExportSuccess(true);
@@ -86,23 +86,18 @@ export default function ComebackLog() {
           ✓ CSV downloaded successfully
         </div>
       )}
-
       <div className="page-header">
         <div className="flex-between">
           <div>
             <div className="page-title">Comeback Log</div>
             <div className="page-subtitle">{filtered.length} records shown</div>
           </div>
-          <button
-            onClick={handleExportCSV}
-            disabled={exporting || filtered.length === 0}
-            style={{ padding: "9px 18px", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: filtered.length === 0 ? "not-allowed" : "pointer", border: "1px solid rgba(199,0,30,0.4)", background: exportSuccess ? "#166534" : "rgba(199,0,30,0.12)", color: exportSuccess ? "#fff" : "#f87171", opacity: filtered.length === 0 ? 0.5 : 1, transition: "all 0.2s", display: "flex", alignItems: "center", gap: 6 }}
-          >
+          <button onClick={handleExportCSV} disabled={exporting || filtered.length === 0}
+            style={{ padding: "9px 18px", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: filtered.length === 0 ? "not-allowed" : "pointer", border: "1px solid rgba(199,0,30,0.4)", background: exportSuccess ? "#166534" : "rgba(199,0,30,0.12)", color: exportSuccess ? "#fff" : "#f87171", opacity: filtered.length === 0 ? 0.5 : 1, transition: "all 0.2s", display: "flex", alignItems: "center", gap: 6 }}>
             {exporting ? "Exporting…" : exportSuccess ? "✓ Downloaded" : "⬇ Export CSV"}
           </button>
         </div>
       </div>
-
       <div className="page-body">
         <div className="card section-gap">
           <div className="form-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
@@ -127,27 +122,20 @@ export default function ComebackLog() {
               </label>
             </div>
           </div>
+          {(filterTech !== "All" || filterCat !== "All Categories" || filterRepeat) && (
+            <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)" }}>
+              ⚠ Active filters — CSV export will match what you see above
+            </div>
+          )}
         </div>
-
         <div className="card">
           <div className="table-wrap">
             <table>
               <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Technician</th>
-                  <th>RO #</th>
-                  <th>VIN</th>
-                  <th>Vehicle</th>
-                  <th>Category</th>
-                  <th>Flag</th>
-                  {user?.role === "manager" && <th>Actions</th>}
-                </tr>
+                <tr><th>Date</th><th>Technician</th><th>RO #</th><th>VIN</th><th>Vehicle</th><th>Category</th><th>Flag</th>{user?.role === "manager" && <th>Actions</th>}</tr>
               </thead>
               <tbody>
-                {filtered.length === 0 && (
-                  <tr><td colSpan={8} style={{ textAlign: "center", color: "var(--text-muted)", padding: 32 }}>No records found.</td></tr>
-                )}
+                {filtered.length === 0 && (<tr><td colSpan={8} style={{ textAlign: "center", color: "var(--text-muted)", padding: 32 }}>No records found.</td></tr>)}
                 {filtered.map(c => (
                   <>
                     <tr key={c.id} style={{ cursor: "pointer" }} onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}>
@@ -158,11 +146,7 @@ export default function ComebackLog() {
                       <td>{c.vehicle || "—"}</td>
                       <td>{c.repair_category ? <span className="badge badge-muted">{c.repair_category}</span> : "—"}</td>
                       <td>{c.is_repeat_vin ? <span className="badge badge-danger">REPEAT VIN</span> : <span className="text-muted">—</span>}</td>
-                      {user?.role === "manager" && (
-                        <td onClick={e => e.stopPropagation()}>
-                          <button className="btn btn-ghost" onClick={() => handleDelete(c.id)}>Delete</button>
-                        </td>
-                      )}
+                      {user?.role === "manager" && (<td onClick={e => e.stopPropagation()}><button className="btn btn-ghost" onClick={() => handleDelete(c.id)}>Delete</button></td>)}
                     </tr>
                     {expandedId === c.id && (
                       <tr key={`${c.id}-expand`}>
