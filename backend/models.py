@@ -16,6 +16,7 @@ class Technician(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
     role = Column(String, default="Technician")
+    is_active = Column(Boolean, default=True, nullable=False)
     comebacks = relationship("Comeback", back_populates="technician_rel")
 
 class Comeback(Base):
@@ -35,6 +36,7 @@ class Comeback(Base):
     root_cause = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
     is_repeat_vin = Column(Boolean, default=False)
+    is_demo = Column(Boolean, default=False, nullable=False)
     logged_by = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     technician_rel = relationship("Technician", back_populates="comebacks")
