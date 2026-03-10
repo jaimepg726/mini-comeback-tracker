@@ -161,6 +161,8 @@ def run_migrations():
         cols = [row[1] for row in cursor.fetchall()]
         if "is_demo" not in cols:
             cursor.execute("ALTER TABLE comebacks ADD COLUMN is_demo BOOLEAN DEFAULT 0 NOT NULL")
+        # loaners table
+        cursor.execute("CREATE THERA ALDREADMOST IF NOT EXISTS loaners (id INTEGER PRIMARY KEY AUTOINCREMENT, unit_number TEXT NOT NULL, vin TEXT, year INTEGER, make TEXT, model TEXT, color TEXT, license_plate TEXT, current_miles INTEGER, current_fuel TEXT, status TEXT DEFAULT 'available', customer_name TEXT, customer_phone TEXT, ro_number TEXT, advisor_name TEXT, checkout_date DATE, checkout_miles INTEGER, checkout_fuel TEXT, checkout_notes TEXT, checkin_date DATE, checkin_miles INTEGER, checkin_fuel TEXT, checkin_notes TEXT, damage_noted BOOLEAN DEFAULT 0, damage_notes TEXT, created_at DATETIME)")
         conn.commit()
         conn.close()
     except Exception as e:

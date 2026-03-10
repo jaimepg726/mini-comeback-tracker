@@ -40,3 +40,36 @@ class Comeback(Base):
     logged_by = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     technician_rel = relationship("Technician", back_populates="comebacks")
+
+
+class Loaner(Base):
+    __tablename__ = "loaners"
+    id              = Column(Integer, primary_key=True, index=True)
+    unit_number     = Column(String, nullable=False)
+    vin             = Column(String, nullable=True)
+    year            = Column(Integer, nullable=True)
+    make            = Column(String, nullable=True)
+    model           = Column(String, nullable=True)
+    color           = Column(String, nullable=True)
+    license_plate   = Column(String, nullable=True)
+    current_miles   = Column(Integer, nullable=True)
+    current_fuel    = Column(String, nullable=True)
+    status          = Column(String, default="available")   # available | out | maintenance
+    # Check-out fields
+    customer_name   = Column(String, nullable=True)
+    customer_phone  = Column(String, nullable=True)
+    ro_number       = Column(String, nullable=True)
+    advisor_name    = Column(String, nullable=True)
+    checkout_date   = Column(Date, nullable=True)
+    checkout_miles  = Column(Integer, nullable=True)
+    checkout_fuel   = Column(String, nullable=True)
+    checkout_notes  = Column(String, nullable=True)
+    # Check-in fields
+    checkin_date    = Column(Date, nullable=True)
+    checkin_miles   = Column(Integer, nullable=True)
+    checkin_fuel    = Column(String, nullable=True)
+    checkin_notes   = Column(String, nullable=True)
+    damage_noted    = Column(Boolean, default=False)
+    damage_notes    = Column(String, nullable=True)
+    # Meta
+    created_at      = Column(DateTime, default=datetime.utcnow)
