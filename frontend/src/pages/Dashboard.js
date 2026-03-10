@@ -94,6 +94,33 @@ export default function Dashboard() {
           </div>
         </div>
 
+        
+        {data.loaners_total > 0 && (
+          <div className="card section-gap" style={{ borderColor: "rgba(37,99,235,0.3)" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+              <div className="card-title" style={{ marginBottom:0 }}>Loaner Fleet</div>
+              <a href="/fleet" style={{ fontSize:12, color:"#6098f8", textDecoration:"none" }}>Wiew Fleet →</a>
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12 }}>
+              <div style={{ padding:"16px", background:"rgba(37,99,235,0.1)", borderRadius:8, textAlign:"center" }}>
+                <div style={{ fontSize:28, fontWeight:700, color:"#60a8db" }}>{data.loaners_total}</div>
+                <div style={{ fontSize:11, color:"#6b7280", marginTop:4 }}>Total</div>
+              </div>
+              <div style={{ padding:"16px", background:"rgba(22,163,74,0.1)", borderRadius:8, textAlign:"center" }}>
+                <div style={{ fontSize:28, fontWeight:700, color:"#4ade80" }}>{data.loaners_available}</div>
+                <div style={{ fontSize:11, color:"#6b7280", marginTop:4 }}>Available</div>
+              </div>
+              <div style={{ padding:"16px", background:"rgba(199,0,30,0.1)", borderRadius:8, textAlign:"center" }}>
+                <div style={{ fontSize:28, fontWeight:700, color:"#f87171" }}>{data.loaners_out}</div>
+                <div style={{ fontSize:11, color:"#6b7280", marginTop:4 }}>Out</div>
+              </div>
+              <div style={{ padding:"16px", background:"rgba(234,179,8,0.1)", borderRadius:8, textAlign:"center" }}>
+                <div style={{ fontSize:28, fontWeight:700, color:"#facc15" }}>{data.loaners_damage}</div>
+                <div style={{ fontSize:11, color:"#6b7280", marginTop:4 }}>Damage Flags                 </div>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="two-col section-gap">
           <div className="card">
             <div className="card-title">Comebacks by Category</div>

@@ -84,7 +84,13 @@ def delete_comeback(comeback_id: int, db: Session = Depends(get_db), current_use
     return {"ok": True}
 @app.get("/dashboard/summary")
 def dashboard_summary(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    return crud.get_dashboard_summary(db)
+    summary = crud.get_dashboard_summary(db)
+    loaners = crud.get_loaners(db)
+    summary["loaners_total"] = len(loaners)
+    summary["loaners_out"] = sum(1 for l in loaners if l.status == "out")
+    summary["loaners_available"] = sum(1 for l in loaners if l.status == "available")
+    summary["loaners_damage"] = sum(1 for l in loaners if l.damage_noted)
+    return summary
 @app.get("/comebacks/export-csv")
 def export_comebacks_csv(
     start_date: str = None,
