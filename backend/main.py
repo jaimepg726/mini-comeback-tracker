@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, APIRouter
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -9,6 +9,7 @@ import bcrypt
 from database import SessionLocal, engine
 import models, schemas, crud
 models.Base.metadata.create_all(bind=engine)
+
 app = FastAPI(title="DealerSuite - Service Quality Tracker")
 app.add_middleware(
     CORSMiddleware,
@@ -17,21 +18,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# All API routes are mounted under /api so the nginx proxy rule is a single
+# `location /api/` block and the frontend can use one consistent prefix.
+api_router = APIRouter()
+
 SECRET_KEY = "mini-fairfield-comeback-secret-2024"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 480
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/token")
+
 def get_db():
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -49,15 +58,21 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise credentials_exception
     return user
+
+# ── Health (also available at root for infra checks) ─────────────────────────
+
 @app.get("/health")
+@api_router.get("/health")
 def health():
     return {"status": "ok"}
 
-@app.get("/categories")
+# ── Auth ──────────────────────────────────────────────────────────────────────
+
+@api_router.get("/categories")
 def list_categories():
     return crud.CATEGORIES
 
-@app.post("/token", response_model=schemas.Token)
+@api_router.post("/token", response_model=schemas.Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = crud.get_user_by_username(db, form_data.username)
     if not user or not bcrypt.checkpw(form_data.password.encode(), user.hashed_password.encode()):
@@ -67,18 +82,24 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     return {"access_token": token, "token_type": "bearer", "role": user.role, "name": user.full_name}
-@app.get("/me", response_model=schemas.UserOut)
+
+@api_router.get("/me", response_model=schemas.UserOut)
 def read_me(current_user=Depends(get_current_user)):
     return current_user
-@app.post("/comebacks", response_model=schemas.ComebackOut)
+
+# ── Comebacks ─────────────────────────────────────────────────────────────────
+
+@api_router.post("/comebacks", response_model=schemas.ComebackOut)
 def create_comeback(comeback: schemas.ComebackCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if crud.get_demo_mode(db):
         raise HTTPException(status_code=403, detail="Demo mode active — real writes are disabled")
     return crud.create_comeback(db, comeback, logged_by=current_user.username)
-@app.get("/comebacks", response_model=List[schemas.ComebackOut])
+
+@api_router.get("/comebacks", response_model=List[schemas.ComebackOut])
 def list_comebacks(skip: int = 0, limit: int = 200, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     return crud.get_comebacks(db, skip=skip, limit=limit, demo_mode=crud.get_demo_mode(db))
-@app.put("/comebacks/{comeback_id}", response_model=schemas.ComebackOut)
+
+@api_router.put("/comebacks/{comeback_id}", response_model=schemas.ComebackOut)
 def update_comeback(comeback_id: int, update: schemas.ComebackUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user.role != "manager":
         raise HTTPException(status_code=403, detail="Only managers can update records")
@@ -86,16 +107,15 @@ def update_comeback(comeback_id: int, update: schemas.ComebackUpdate, db: Sessio
     if not cb:
         raise HTTPException(status_code=404, detail="Not found")
     return cb
-@app.delete("/comebacks/{comeback_id}")
+
+@api_router.delete("/comebacks/{comeback_id}")
 def delete_comeback(comeback_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user.role != "manager":
         raise HTTPException(status_code=403, detail="Only managers can delete records")
     crud.delete_comeback(db, comeback_id)
     return {"ok": True}
-@app.get("/dashboard/summary")
-def dashboard_summary(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    return crud.get_dashboard_summary(db, demo_mode=crud.get_demo_mode(db))
-@app.get("/comebacks/export-csv")
+
+@api_router.get("/comebacks/export-csv")
 def export_comebacks_csv(
     start_date: str = None,
     end_date: str = None,
@@ -116,38 +136,56 @@ def export_comebacks_csv(
     output.seek(0)
     filename = f"comebacks_{start_date or 'all'}_{end_date or 'all'}.csv"
     return StreamingResponse(iter([output.getvalue()]), media_type="text/csv", headers={"Content-Disposition": f"attachment; filename={filename}"})
-@app.get("/dashboard/weekly-report")
+
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+
+@api_router.get("/dashboard/summary")
+def dashboard_summary(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return crud.get_dashboard_summary(db, demo_mode=crud.get_demo_mode(db))
+
+@api_router.get("/dashboard/weekly-report")
 def weekly_report(start_date: str = None, end_date: str = None, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     return crud.get_weekly_report(db, start_date=start_date, end_date=end_date, demo_mode=crud.get_demo_mode(db))
-@app.get("/demo/stats")
+
+# ── Demo mode ─────────────────────────────────────────────────────────────────
+
+@api_router.get("/demo/stats")
 def demo_stats(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user.role != "manager":
         raise HTTPException(status_code=403, detail="Manager access required")
     return crud.get_demo_stats(db)
-@app.post("/demo/seed")
+
+@api_router.post("/demo/seed")
 def demo_seed(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user.role != "manager":
         raise HTTPException(status_code=403, detail="Manager access required")
     return crud.seed_demo_comebacks(db)
-@app.delete("/demo/clear")
+
+@api_router.delete("/demo/clear")
 def demo_clear(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user.role != "manager":
         raise HTTPException(status_code=403, detail="Manager access required")
     return crud.clear_demo_comebacks(db)
-@app.get("/technicians", response_model=List[schemas.TechnicianOut])
+
+# ── Technicians ───────────────────────────────────────────────────────────────
+
+@api_router.get("/technicians", response_model=List[schemas.TechnicianOut])
 def list_technicians(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     return crud.get_technicians(db)
-@app.get("/technicians/all", response_model=List[schemas.TechnicianOut])
+
+@api_router.get("/technicians/all", response_model=List[schemas.TechnicianOut])
 def list_all_technicians(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user.role != "manager":
         raise HTTPException(status_code=403, detail="Manager access required")
     return crud.get_all_technicians(db)
-@app.post("/technicians", response_model=schemas.TechnicianOut)
+
+@api_router.post("/technicians", response_model=schemas.TechnicianOut)
 def create_technician(tech: schemas.TechnicianCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user.role != "manager":
         raise HTTPException(status_code=403, detail="Only managers can add technicians")
     return crud.create_technician(db, tech)
-@app.patch("/technicians/{tech_id}/deactivate", response_model=schemas.TechnicianOut)
+
+@api_router.patch("/technicians/{tech_id}/deactivate", response_model=schemas.TechnicianOut)
 def deactivate_technician(tech_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user.role != "manager":
         raise HTTPException(status_code=403, detail="Manager access required")
@@ -155,7 +193,8 @@ def deactivate_technician(tech_id: int, db: Session = Depends(get_db), current_u
     if not tech:
         raise HTTPException(status_code=404, detail="Technician not found")
     return tech
-@app.patch("/technicians/{tech_id}/reactivate", response_model=schemas.TechnicianOut)
+
+@api_router.patch("/technicians/{tech_id}/reactivate", response_model=schemas.TechnicianOut)
 def reactivate_technician(tech_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user.role != "manager":
         raise HTTPException(status_code=403, detail="Manager access required")
@@ -163,7 +202,8 @@ def reactivate_technician(tech_id: int, db: Session = Depends(get_db), current_u
     if not tech:
         raise HTTPException(status_code=404, detail="Technician not found")
     return tech
-@app.delete("/technicians/{tech_id}")
+
+@api_router.delete("/technicians/{tech_id}")
 def delete_technician(tech_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user.role != "manager":
         raise HTTPException(status_code=403, detail="Only managers can remove technicians")
@@ -171,12 +211,16 @@ def delete_technician(tech_id: int, db: Session = Depends(get_db), current_user=
     if not tech:
         raise HTTPException(status_code=404, detail="Technician not found")
     return {"ok": True}
-@app.get("/settings")
+
+# ── Settings ──────────────────────────────────────────────────────────────────
+
+@api_router.get("/settings")
 def get_settings(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user.role != "manager":
         raise HTTPException(status_code=403, detail="Manager access required")
     return crud.get_all_settings(db)
-@app.put("/settings/{key}")
+
+@api_router.put("/settings/{key}")
 def update_setting(key: str, body: schemas.SettingUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user.role != "manager":
         raise HTTPException(status_code=403, detail="Manager access required")
@@ -184,6 +228,12 @@ def update_setting(key: str, body: schemas.SettingUpdate, db: Session = Depends(
     if key not in allowed_keys:
         raise HTTPException(status_code=400, detail=f"Unknown setting key: {key}")
     return crud.upsert_setting(db, key, body.value)
+
+# ── Mount all API routes under /api ───────────────────────────────────────────
+app.include_router(api_router, prefix="/api")
+
+# ── Startup ───────────────────────────────────────────────────────────────────
+
 @app.on_event("startup")
 def run_migrations():
     import sqlite3, logging
@@ -205,6 +255,7 @@ def run_migrations():
         conn.close()
     except Exception as e:
         logging.error(f"Migration runner failed (non-fatal): {e}")
+
 @app.on_event("startup")
 def seed_defaults():
     db = SessionLocal()
