@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import ManageTechs from "./ManageTechs";
+import { apiGet, apiPost, apiDelete } from "../utils/apiClient";
 
 const TABS = [
   { id: "technicians", label: "Technicians" },
@@ -220,6 +221,7 @@ function DataTab() {
 function DemoModeTab() {
   const { API, demoMode, refreshDemoMode } = useAuth();
   const [stats, setStats] = useState(null);
+  const [statsError, setStatsError] = useState(null);
   const [loadingStats, setLoadingStats] = useState(true);
   const [seeding, setSeeding] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -233,9 +235,19 @@ function DemoModeTab() {
 
   const loadStats = () => {
     setLoadingStats(true);
-    axios.get(`${API}/demo/stats`)
-      .then(r => setStats(r.data))
-      .catch(() => setStats(null))
+    setStatsError(null);
+    apiGet("/demo/stats")
+      .then(data => setStats(data))
+      .catch(e => {
+        setStats(null);
+        const isNotFound = e.status === 404;
+        setStatsError(
+          isNotFound
+            ? "Demo endpoint unreachable. Check API base URL / route prefix."
+            : e.message || "Stats unavailable"
+        );
+        console.error("[demo/stats]", e.status, e.message);
+      })
       .finally(() => setLoadingStats(false));
   };
 
@@ -244,22 +256,34 @@ function DemoModeTab() {
   const handleSeed = async () => {
     setSeeding(true);
     try {
-      const r = await axios.post(`${API}/demo/seed`);
-      flash(`✓ ${r.data.seeded} demo records created`);
+      const data = await apiPost("/demo/seed");
+      flash(`✓ ${data.seeded} demo records created`);
       loadStats();
     } catch (e) {
-      flash(e.response?.data?.detail || "Seed failed", false);
+      const isNotFound = e.status === 404;
+      flash(
+        isNotFound
+          ? "Demo endpoint unreachable. Check API base URL / route prefix."
+          : e.message || "Seed failed",
+        false
+      );
     } finally { setSeeding(false); }
   };
 
   const handleClear = async () => {
     setClearing(true);
     try {
-      const r = await axios.delete(`${API}/demo/clear`);
-      flash(`✓ ${r.data.deleted} demo records removed`);
+      const data = await apiDelete("/demo/clear");
+      flash(`✓ ${data.cleared} demo records removed`);
       loadStats();
     } catch (e) {
-      flash(e.response?.data?.detail || "Clear failed", false);
+      const isNotFound = e.status === 404;
+      flash(
+        isNotFound
+          ? "Demo endpoint unreachable. Check API base URL / route prefix."
+          : e.message || "Clear failed",
+        false
+      );
     } finally { setClearing(false); }
   };
 
@@ -328,6 +352,10 @@ function DemoModeTab() {
 
         {loadingStats ? (
           <div style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading stats…</div>
+        ) : statsError ? (
+          <div style={{ fontSize: 13, color: "#f87171", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.25)", borderRadius: 8, padding: "10px 14px" }}>
+            {statsError}
+          </div>
         ) : stats ? (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
             {[

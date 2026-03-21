@@ -46,22 +46,36 @@ export default function Dashboard() {
   const { API } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
+    setError(null);
     axios.get(`${API}/dashboard/summary`)
       .then(r => setData(r.data))
+      .catch(e => setError(e.response?.data?.detail || e.message || "Failed to load dashboard"))
       .finally(() => setLoading(false));
   }, [API]);
 
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>;
-  if (!data) return null;
+  if (error) return (
+    <div className="page-body" style={{ paddingTop: 40, textAlign: "center" }}>
+      <div style={{ color: "#f87171", fontSize: 14, background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.25)", borderRadius: 10, padding: "20px 28px", display: "inline-block" }}>
+        Failed to load dashboard: {error}
+      </div>
+    </div>
+  );
+  if (!data) return (
+    <div className="page-body" style={{ paddingTop: 40, textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>
+      No comebacks yet.
+    </div>
+  );
 
-  const categoryData = Object.entries(data.category_counts)
+  const categoryData = Object.entries(data.category_counts ?? {})
     .filter(([, v]) => v > 0)
     .sort((a, b) => b[1] - a[1])
     .map(([name, value]) => ({ name, value }));
 
-  const techData = data.technician_stats.map(t => ({
+  const techData = (data.technician_stats ?? []).map(t => ({
     name: t.technician,
     comebacks: t.comebacks,
     repeats: t.repeat_vins,
@@ -207,7 +221,7 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {data.technician_stats.sort((a, b) => b.comebacks - a.comebacks).map(t => (
+                {(data.technician_stats ?? []).sort((a, b) => b.comebacks - a.comebacks).map(t => (
                   <tr key={t.technician}>
                     <td style={{ fontWeight: 600 }}>{t.technician}</td>
                     <td>
@@ -229,7 +243,7 @@ export default function Dashboard() {
         {/* Recent comebacks */}
         <div className="card">
           <div className="card-title">Recent Comebacks (Last 30 Days)</div>
-          {data.recent_comebacks.length === 0 ? (
+          {(data.recent_comebacks ?? []).length === 0 ? (
             <div className="text-muted text-sm">No comebacks in the last 30 days.</div>
           ) : (
             <div className="table-wrap">
@@ -244,7 +258,7 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.recent_comebacks.map(c => (
+                  {(data.recent_comebacks ?? []).map(c => (
                     <tr key={c.id}>
                       <td>{fmtDate(c.comeback_date)}</td>
                       <td style={{ fontWeight: 600 }}>{c.technician_name}</td>
