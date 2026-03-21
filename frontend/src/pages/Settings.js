@@ -357,19 +357,28 @@ function DemoModeTab() {
             {statsError}
           </div>
         ) : stats ? (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
-            {[
-              { label: "Demo Records", value: stats.total_demo },
-              { label: "Real Records", value: stats.total_real },
-              { label: "Technicians", value: stats.demo_technicians },
-              { label: "Categories", value: stats.demo_categories },
-            ].map(s => (
-              <div key={s.label} style={{ background: "var(--gray-800)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 16px", textAlign: "center" }}>
-                <div style={{ fontSize: 24, fontWeight: 800, color: "#e5e7eb" }}>{s.value ?? "—"}</div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{s.label}</div>
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12 }}>
+              {[
+                { label: "Demo Records",  value: stats.total_demo },
+                { label: "Real Records",  value: stats.total_real },
+                { label: "Unique VINs",   value: stats.unique_vins },
+                { label: "Repeat VINs",   value: stats.repeated_vins_count },
+                { label: "Technicians",   value: stats.demo_technicians },
+                { label: "Categories",    value: stats.demo_categories },
+              ].map(s => (
+                <div key={s.label} style={{ background: "var(--gray-800)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 16px", textAlign: "center" }}>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: "#e5e7eb" }}>{s.value ?? "—"}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+            {(stats.date_start || stats.date_end) && (
+              <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
+                Date range: <strong style={{ color: "var(--text)" }}>{stats.date_start || "—"}</strong> → <strong style={{ color: "var(--text)" }}>{stats.date_end || "—"}</strong>
               </div>
-            ))}
-          </div>
+            )}
+          </>
         ) : (
           <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Stats unavailable.</div>
         )}
@@ -378,7 +387,7 @@ function DemoModeTab() {
       <div className="card" style={{ marginTop: 16 }}>
         <div className="card-title">How Demo Mode Works</div>
         <div style={{ display: "grid", gap: 10, fontSize: 13, color: "var(--text-muted)" }}>
-          <div><strong style={{ color: "var(--text)" }}>Seed Demo Data</strong> — creates 35 realistic comeback records using sample technicians, VINs, and categories. Safe to run multiple times (clears first).</div>
+          <div><strong style={{ color: "var(--text)" }}>Seed Demo Data</strong> — creates {stats?.configured_total ?? 87} comebacks (~{stats?.configured_vins ?? 69} unique VINs) spanning {stats?.configured_start ?? "2026-01-01"} to today, with weighted tech distribution and realistic MINI service scenarios. Safe to run multiple times (clears first).</div>
           <div><strong style={{ color: "var(--text)" }}>Enable Demo</strong> — switches all read views to show only demo records. Real data is hidden but never deleted.</div>
           <div><strong style={{ color: "var(--text)" }}>Disable Demo</strong> — immediately restores real data. Demo records remain until you clear them.</div>
           <div><strong style={{ color: "var(--text)" }}>Clear Demo Data</strong> — permanently removes all demo records. Real records are never affected.</div>

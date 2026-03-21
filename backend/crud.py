@@ -13,9 +13,12 @@ CATEGORIES = [
 ]
 
 SETTING_DEFAULTS = {
-    "repeat_vin_window_days": "0",     # 0 = all-time
+    "repeat_vin_window_days": "0",         # 0 = all-time
     "dashboard_week_start": "Monday",
     "demo_mode_enabled": "false",
+    "demo_seed_total_comebacks": "87",     # int >= 1
+    "demo_seed_unique_vins": "69",         # int >= 1, <= total
+    "demo_seed_start_date": "2026-01-01",  # date <= today
 }
 
 def get_setting(db, key: str) -> str:
@@ -249,23 +252,46 @@ def get_comebacks_csv(db, start_date=None, end_date=None, technician=None, categ
 # ─── Demo data ───────────────────────────────────────────────────────────────
 
 def get_demo_stats(db) -> dict:
-    total_demo = db.query(models.Comeback).filter(models.Comeback.is_demo == True).count()
+    _demo = models.Comeback.is_demo == True
+    total_demo = db.query(models.Comeback).filter(_demo).count()
     total_real = db.query(models.Comeback).filter(models.Comeback.is_demo == False).count()
     demo_technicians = (
         db.query(func.count(models.Comeback.technician_name.distinct()))
-          .filter(models.Comeback.is_demo == True)
-          .scalar() or 0
+          .filter(_demo).scalar() or 0
     )
     demo_categories = (
         db.query(func.count(models.Comeback.repair_category.distinct()))
-          .filter(models.Comeback.is_demo == True)
-          .scalar() or 0
+          .filter(_demo).scalar() or 0
     )
+    unique_vins = (
+        db.query(func.count(models.Comeback.vin_last7.distinct()))
+          .filter(_demo).scalar() or 0
+    )
+    date_agg = (
+        db.query(func.min(models.Comeback.comeback_date), func.max(models.Comeback.comeback_date))
+          .filter(_demo).first()
+    )
+    date_start = date_agg[0].isoformat() if date_agg and date_agg[0] else None
+    date_end   = date_agg[1].isoformat() if date_agg and date_agg[1] else None
+    repeated_vins_count = (
+        db.query(func.count(models.Comeback.vin_last7.distinct()))
+          .filter(_demo, models.Comeback.is_repeat_vin == True).scalar() or 0
+    )
+    configured_total = int(get_setting(db, "demo_seed_total_comebacks") or 87)
+    configured_vins  = int(get_setting(db, "demo_seed_unique_vins")      or 69)
+    configured_start = get_setting(db, "demo_seed_start_date") or "2026-01-01"
     return {
         "total_demo": total_demo,
         "total_real": total_real,
         "demo_technicians": demo_technicians,
         "demo_categories": demo_categories,
+        "unique_vins": unique_vins,
+        "date_start": date_start,
+        "date_end": date_end,
+        "repeated_vins_count": repeated_vins_count,
+        "configured_total": configured_total,
+        "configured_vins": configured_vins,
+        "configured_start": configured_start,
     }
 
 def clear_demo_comebacks(db) -> dict:
@@ -274,223 +300,406 @@ def clear_demo_comebacks(db) -> dict:
     db.commit()
     return {"cleared": count}
 
-def seed_demo_comebacks(db) -> dict:
-    today = date.today()
-    # (days_ago, tech, vin, vehicle, category, concern, orig_repair, fix, root_cause, flag, ro)
-    R = [
-        # ── 3 weeks ago ──────────────────────────────────────────────────────
-        (21, "Jake",    "B72K903", "2022 MINI Cooper S",       "Electrical",
-         "Customer states driver power window inoperative day after regulator replacement",
-         "Window regulator replacement LF",
-         "Found window motor binding on track; replaced motor and track assembly",
-         "Regulator misaligned during initial installation", "Safety", "10001"),
-        (20, "Ernie",   "T44F981", "2023 MINI Clubman",        "Diagnosis",
-         "Check engine light returned same week as oil service",
-         "Engine oil service 5W-30 full synthetic",
-         "Found loose oil cap causing evap leak P0457; re-torqued and cleared code",
-         "Oil cap not fully seated post-service", None, "10002"),
-        (20, "Jeisson", "N22G456", "2021 MINI Countryman",     "Brake",
-         "Customer states brake pedal soft after brake fluid flush",
-         "Brake fluid flush, all four corners bled",
-         "Found air pocket in rear caliper; re-bled using pressure bleeder",
-         "Incomplete bleed on rear passenger caliper", "Safety", "10003"),
-        (19, "Michael", "K99H782", "2020 MINI Cooper SE",      "Suspension",
-         "Clunking from front suspension continues after strut replacement",
-         "Front strut replacement LF and RF",
-         "Found loose strut top nut; torqued to spec 50 ft-lbs",
-         "Strut top nut not torqued to specification", None, "10004"),
-        (19, "Manny",   "P33J001", "2022 MINI Convertible",    "CBS Light Reset",
-         "CBS service light on 3 days after CBS reset",
-         "Oil service and CBS reset performed",
-         "Module not accepting reset via standard procedure; performed via ISTA coding",
-         "Reset procedure timeout during original service", None, "10005"),
-        (18, "Jake",    "Q11M220", "2023 MINI JCW Hatch",      "Engine",
-         "Oil leak at valve cover persists after gasket replacement last month",
-         "Valve cover gasket replacement",
-         "Found gasket improperly seated at rear corner; replaced with OEM, torque sequence corrected",
-         "Incorrect installation sequence — gasket pinched at rear", None, "10006"),
-        (18, "Ernie",   "T44F981", "2023 MINI Clubman",        "Tire Light Reset",
-         "Tire warning light came back on 1 week after sensor replacement",
-         "TPMS sensor replacement RF",
-         "Found RF sensor not initialized; performed relearn procedure with TPMS tool",
-         "Sensor installed but relearn procedure skipped", None, "10007"),
-        (17, "Jeisson", "R77A432", "2021 MINI Hatch",          "Programming/Coding",
-         "Navigation system unresponsive since software update last visit",
-         "iDrive software update",
-         "Performed full ISTA software flash; reset NBT module to factory",
-         "Incomplete write cycle during update due to low voltage", None, "10008"),
-        (17, "Michael", "S55D190", "2022 MINI Clubman ALL4",   "Oil/Leaks",
-         "Customer reports excessive oil consumption since engine service 3 weeks ago",
-         "Engine oil service + air filter replacement",
-         "Found incorrect viscosity used; drained and refilled with correct 5W-30",
-         "5W-40 used instead of specified 5W-30 LL-04", "Customer Satisfaction", "10009"),
-        (16, "Manny",   "Z88C671", "2022 MINI Paceman",        "Tire Pressure Reset / Tire PSI Incorrect",
-         "TPMS light still on after all 4 tires inflated and sensor check performed",
-         "Tire rotation and pressure check",
-         "Found RF tire had nail-caused slow leak; patched and reinflated, reset TPMS",
-         "Nail in tire missed during rotation inspection", None, "10010"),
-        # ── 2 weeks ago ──────────────────────────────────────────────────────
-        (15, "Jake",    "B72K903", "2022 MINI Cooper S",       "Diagnosis",
-         "Customer returned with check engine light after timing chain job prior week",
-         "Timing chain replacement",
-         "Found cam sensor unplugged after chain job; reconnected, cleared P0340",
-         "Cam sensor harness dislodged during chain replacement", "Escalated", "10011"),
-        (14, "Ernie",   "W66E345", "2023 MINI Convertible",    "Electrical",
-         "Horn inoperative after clock spring replacement during airbag service",
-         "Airbag service and clock spring replacement",
-         "Found horn relay blown due to incorrect wiring at spring connector; replaced relay",
-         "Wiring harness reversed at clock spring connector", "Safety", "10012"),
-        (14, "Jeisson", "N22G456", "2021 MINI Countryman",     "CBS Light Reset",
-         "CBS light returning after reset was performed 2 weeks ago",
-         "Oil service and CBS reset",
-         "Found CBS module requiring software update per TSB; updated via ISTA",
-         "TSB not applied during original service", None, "10013"),
-        (13, "Michael", "K99H782", "2020 MINI Cooper SE",      "Electrical",
-         "Radio and Bluetooth not functioning since infotainment update",
-         "iDrive software update requested by customer",
-         "Performed full software reflash; restored customer Bluetooth profiles",
-         "Corrupted install due to power interruption during write", "Customer Satisfaction", "10014"),
-        (13, "Manny",   "P33J001", "2022 MINI Convertible",    "Engine",
-         "Rough idle and hesitation on acceleration after throttle body cleaning",
-         "Throttle body cleaning and idle relearn",
-         "Performed idle adaptation and throttle body relearn per procedure",
-         "Relearn procedure skipped after cleaning", None, "10015"),
-        (12, "Jake",    "Q11M220", "2023 MINI JCW Hatch",      "Suspension",
-         "Steering pulling right after 4-wheel alignment performed last week",
-         "4-wheel alignment to spec",
-         "Found RF tire severely worn on inside edge; replaced tire and re-aligned",
-         "Worn tire not identified during pre-alignment inspection", None, "10016"),
-        (12, "Ernie",   "R77A432", "2021 MINI Hatch",          "Tire/Brake Measurements Off",
-         "Brake pad measurements given at service differ from dashboard indicator",
-         "Brake inspection and pad measurement",
-         "Found rear pads at 2mm; replaced rear pads, recalibrated sensors",
-         "Rear pads not measured during inspection — only fronts checked", "Customer Satisfaction", "10017"),
-        (11, "Jeisson", "S55D190", "2022 MINI Clubman ALL4",   "Programming/Coding",
-         "Bluetooth pairing lost and all settings reset after battery replacement",
-         "Battery replacement 60Ah AGM",
-         "Performed battery registration via ISTA; restored module memory values",
-         "Battery registration not performed post-replacement", None, "10018"),
-        (11, "Michael", "Z88C671", "2022 MINI Paceman",        "Diagnosis",
-         "Multiple codes present after coolant system pressure test last visit",
-         "Coolant expansion tank replacement",
-         "Found cracked coolant line at connection; replaced line and re-pressure tested",
-         "Cracked hose not identified during pressure test", None, "10019"),
-        (10, "Manny",   "W66E345", "2023 MINI Convertible",    "Brake",
-         "ABS and brake warning lights on after front caliper rebuild",
-         "Front brake caliper rebuild LF",
-         "Found ABS wheel speed sensor damaged during caliper work; replaced sensor",
-         "Speed sensor harness pinched during caliper installation", "Safety", "10020"),
-        (10, "Jake",    "B72K903", "2022 MINI Cooper S",       "Electrical",
-         "Interior lights flicker and radio resets intermittently — third visit same complaint",
-         "Electrical diagnostic and chassis ground strap replacement",
-         "Found main chassis ground splice corroded; replaced ground splice and harness section",
-         "Root cause ground corruption not fully resolved on prior two visits", "Escalated", "10021"),
-        # ── Last week ────────────────────────────────────────────────────────
-        (7,  "Ernie",   "T44F981", "2023 MINI Clubman",        "Oil/Leaks",
-         "Oil drips under vehicle 5 days after oil service",
-         "Engine oil service 5W-30",
-         "Found drain plug overtorqued; thread damage caused seepage. Installed thread repair insert",
-         "Drain plug overtorqued causing thread damage", None, "10022"),
-        (7,  "Jeisson", "N22G456", "2021 MINI Countryman",     "Brake",
-         "Brake shudder at highway speeds since brake job 2 weeks ago",
-         "Front brake pads and rotors replacement",
-         "Rotors warped during bed-in from improper heat cycling; replaced rotors, performed proper bed-in",
-         "Bed-in procedure not communicated or performed with customer", "Customer Satisfaction", "10023"),
-        (6,  "Michael", "K99H782", "2020 MINI Cooper SE",      "Tire Pressure Reset / Tire PSI Incorrect",
-         "PSI readings incorrect on dash after tire pressure adjustment at last service",
-         "Tire pressure check and adjustment all 4 tires",
-         "Found TPMS sensor in LF tire failed; replaced sensor and performed relearn",
-         "Failed TPMS sensor not identified during pressure service", None, "10024"),
-        (6,  "Manny",   "P33J001", "2022 MINI Convertible",    "CBS Light Reset",
-         "CBS light on again — third time this month",
-         "CBS light reset via OBD tool",
-         "Oil quality sensor determined faulty; replaced sensor and performed CBS reset via ISTA",
-         "Faulty oil quality sensor triggering premature CBS warnings", "Escalated", "10025"),
-        (5,  "Jake",    "Q11M220", "2023 MINI JCW Hatch",      "Engine",
-         "Coolant temp warning and engine running hot after thermostat replacement",
-         "Thermostat replacement",
-         "Found air lock in cooling system; performed cooling system bleed procedure",
-         "Cooling system bleed not performed after thermostat replacement", "Safety", "10026"),
-        (5,  "Ernie",   "R77A432", "2021 MINI Hatch",          "Other",
-         "Squeaking from engine bay after belt replacement last visit",
-         "Serpentine belt replacement",
-         "Found tensioner pulley bearing failing; replaced complete tensioner assembly",
-         "Tensioner bearing wear missed during belt inspection", None, "10027"),
-        (4,  "Jeisson", "S55D190", "2022 MINI Clubman ALL4",   "Electrical",
-         "Headlights flickering and auto-leveling not working since ballast replacement",
-         "HID ballast replacement LF",
-         "Found loose connector at leveling motor; reseated and secured with OEM clip",
-         "Leveling motor connector not fully seated during ballast work", None, "10028"),
-        (4,  "Michael", "Z88C671", "2022 MINI Paceman",        "Suspension",
-         "Creaking from rear over speed bumps after rear shock replacement",
-         "Rear shock replacement both sides",
-         "Found rear shock mount bushing cracked on driver side; replaced mount bushing",
-         "Worn mount bushing not inspected during shock replacement", None, "10029"),
-        # ── This week ────────────────────────────────────────────────────────
-        (3,  "Manny",   "B72K903", "2022 MINI Cooper S",       "Diagnosis",
-         "Vehicle back for check engine light — fourth visit, same customer complaint",
-         "Extended electrical diagnostic",
-         "Found oxygen sensor heater circuit fault P0036; replaced O2 sensor and cleared",
-         "Intermittent fault requiring extended drive cycle to reproduce", "Escalated", "10030"),
-        (2,  "Jake",    "W66E345", "2023 MINI Convertible",    "Tire/Brake Measurements Off",
-         "Customer concerned measurements given at service don't match prior visit",
-         "Brake inspection multi-point",
-         "Found RF caliper sticking, causing accelerated inside pad wear; replaced caliper",
-         "Seized caliper slide pins not lubricated during last pad service", "Customer Satisfaction", "10031"),
-        (2,  "Ernie",   "T44F981", "2023 MINI Clubman",        "CBS Light Reset",
-         "CBS light on immediately after leaving dealership post-oil service",
-         "Oil service and CBS reset",
-         "Found incorrect oil grade used; drained, refilled correct 5W-30 LL-04, reset CBS",
-         "Wrong oil grade installed (5W-40 vs spec 5W-30)", None, "10032"),
-        (1,  "Jeisson", "N22G456", "2021 MINI Countryman",     "Programming/Coding",
-         "EV charging not working after software update — customer cannot charge at home",
-         "MINI Connected software update",
-         "Rolled back to prior software version; EV charging module re-coded per TSB",
-         "Incompatible software version for this model year / charging module", "Safety", "10033"),
-        (1,  "Michael", "K99H782", "2020 MINI Cooper SE",      "Electrical",
-         "Battery warning light on and 12V not charging after auxiliary battery replacement",
-         "12V auxiliary battery replacement",
-         "Found battery registration not completed; performed registration via ISTA",
-         "Battery registration skipped post-replacement", None, "10034"),
-        (0,  "Manny",   "P33J001", "2022 MINI Convertible",    "Oil/Leaks",
-         "Customer found oil spot in driveway same day as oil change — very upset",
-         "Engine oil service",
-         "Found loose oil filter; torqued to spec, leak resolved",
-         "Oil filter hand-tightened only, not torqued to specification", "Customer Satisfaction", "10035"),
-    ]
+def seed_demo_comebacks(db) -> dict:  # noqa: C901
+    import random as _rng
 
-    for (d, tech, vin, veh, cat, concern, orig, fix, root, flag, ro) in R:
-        cb_date = today - timedelta(days=d)
-        db.add(models.Comeback(
+    # ── Read seed config ──────────────────────────────────────────────────────
+    total     = max(1, int(get_setting(db, "demo_seed_total_comebacks") or 87))
+    n_vins    = min(max(1, int(get_setting(db, "demo_seed_unique_vins")  or 69)), total)
+    start_str = get_setting(db, "demo_seed_start_date") or "2026-01-01"
+    today     = date.today()
+    try:
+        start_dt = date.fromisoformat(start_str)
+    except ValueError:
+        start_dt = date(2026, 1, 1)
+    if start_dt > today:
+        start_dt = today
+    span_days   = max(1, (today - start_dt).days)
+    recent_days = min(42, span_days)   # bias window: last 6 weeks
+
+    # ── Clear existing demo records (idempotent) ──────────────────────────────
+    db.query(models.Comeback).filter(models.Comeback.is_demo == True).delete()
+    db.commit()
+
+    # ── Deterministic RNG — reproducible demo every time ─────────────────────
+    rng = _rng.Random(20260101)
+
+    # ── 7-char VIN pool (VIN-style chars: no I, O, Q) ────────────────────────
+    _C, _D = "ABCDEFGHJKLMNPRSTUVWXYZ", "0123456789"
+    seen_v: set = set()
+    vin_pool: list = []
+    while len(vin_pool) < n_vins:
+        v = (rng.choice(_C) + rng.choice(_D) + rng.choice(_D) +
+             rng.choice(_C) + rng.choice(_D) + rng.choice(_D) + rng.choice(_D))
+        if v not in seen_v:
+            seen_v.add(v); vin_pool.append(v)
+
+    # ── One consistent vehicle model per VIN ──────────────────────────────────
+    _VEHICLES = [
+        "2022 MINI Cooper S", "2023 MINI Clubman", "2021 MINI Countryman",
+        "2020 MINI Cooper SE", "2022 MINI Convertible", "2023 MINI JCW Hatch",
+        "2021 MINI Hatch", "2022 MINI Clubman ALL4", "2023 MINI Convertible",
+        "2024 MINI Cooper", "2021 MINI JCW Clubman", "2020 MINI Paceman",
+        "2023 MINI Countryman", "2022 MINI 3-Door Hatch",
+    ]
+    vin_vehicle = {v: rng.choice(_VEHICLES) for v in vin_pool}
+
+    # ── Distribute comebacks: 1 per VIN, extras spread across ~35% as repeats ─
+    counts = {v: 1 for v in vin_pool}
+    extras = total - n_vins
+    if extras > 0:
+        n_prob   = min(max(int(n_vins * 0.35), extras), n_vins)
+        prob_vins = rng.sample(vin_pool, n_prob)
+        added = 0
+        while added < extras:
+            v = rng.choice(prob_vins)
+            if counts[v] < 4:
+                counts[v] += 1; added += 1
+
+    assignments = [(v, i) for v, c in counts.items() for i in range(c)]
+    rng.shuffle(assignments)
+
+    # ── Weighted tech + category distributions ────────────────────────────────
+    _TECHS  = ["Jake", "Ernie", "Jeisson", "Michael", "Manny"]
+    _TECH_W = [30, 25, 20, 15, 10]
+    _CATS   = ["Electrical","Diagnosis","Brake","Programming/Coding","CBS Light Reset",
+               "Engine","Oil/Leaks","Suspension","Tire Light Reset",
+               "Tire Pressure Reset / Tire PSI Incorrect","Tire/Brake Measurements Off","Other"]
+    _CAT_W  = [15, 14, 12, 10, 10, 8, 8, 7, 5, 4, 4, 3]
+    _FLAGS  = [None]*75 + ["Safety"]*8 + ["Escalated"]*8 + ["Customer Satisfaction"]*9
+
+    # ── Category-specific (concern, original_repair, fix_performed, root_cause) ─
+    _SCRIPTS = {
+        "Electrical": [
+            ("Customer states power window inoperative after regulator replacement",
+             "Window regulator replacement LF",
+             "Found window motor binding on track; replaced motor and track assembly",
+             "Regulator misaligned during initial installation"),
+            ("Interior lights flicker and radio resets intermittently since battery service",
+             "12V battery replacement",
+             "Found main chassis ground splice corroded; replaced splice and harness section",
+             "Ground corruption not fully resolved — intermittent fault"),
+            ("Horn inoperative after clock spring replacement during airbag service",
+             "Airbag service and clock spring replacement",
+             "Found horn relay blown from reversed wiring; replaced relay and corrected connector",
+             "Wiring harness reversed at clock spring connector during install"),
+            ("Radio and Bluetooth non-functional since infotainment update",
+             "iDrive software update requested by customer",
+             "Performed full software reflash; restored customer Bluetooth profiles",
+             "Corrupted install due to power interruption during write"),
+            ("Headlights flickering and auto-leveling inoperative after ballast replacement",
+             "HID ballast replacement LF",
+             "Reseated loose connector at leveling motor; secured with OEM clip",
+             "Leveling motor connector not fully seated during ballast work"),
+            ("Backup camera no image since rear bumper sensor replacement",
+             "Rear parking sensor replacement",
+             "Found camera connector corroded at housing; replaced connector and sealed",
+             "Camera harness exposed to moisture after bumper seal was disturbed"),
+            ("Heated driver seat not functioning after seat foam replacement",
+             "Driver seat foam pad replacement",
+             "Traced open circuit to disconnected heating element connector under seat",
+             "Heating element connector not reconnected during upholstery work"),
+        ],
+        "Diagnosis": [
+            ("Check engine light returned same week as oil service",
+             "Engine oil service 5W-30 full synthetic",
+             "Found loose oil cap causing evap leak P0457; re-torqued and cleared code",
+             "Oil cap not fully seated post-service"),
+            ("Multiple warning lights present after coolant system pressure test",
+             "Coolant expansion tank replacement",
+             "Found cracked hose at connection point; replaced hose and re-pressure tested",
+             "Cracked hose not identified during pressure test"),
+            ("MIL on with P0300 random misfire after tune-up",
+             "Spark plug replacement all cylinders",
+             "Found cracked coil boot on cyl 3; replaced coil assembly",
+             "Cracked coil boot not identified during spark plug service"),
+            ("Check engine light P0171 lean code returned after O2 sensor replacement",
+             "Upstream O2 sensor replacement",
+             "Found vacuum leak at intake boot; replaced intake boot",
+             "Intake boot crack causing lean condition not identified pre-repair"),
+            ("Transmission warning light on after fluid exchange",
+             "Automatic transmission fluid exchange",
+             "Found incorrect fluid spec used; drained and refilled with approved ETL 8072B",
+             "Incorrect fluid specification used during exchange"),
+            ("Vehicle hesitates on cold start since fuel injector cleaning",
+             "Fuel injector cleaning service",
+             "Found injector 2 partially clogged post-clean; replaced injector",
+             "Incomplete clean on injector 2 due to heavy carbon deposits"),
+        ],
+        "Brake": [
+            ("Brake pedal soft after brake fluid flush",
+             "Brake fluid flush, all four corners bled",
+             "Found air pocket in rear caliper; re-bled using pressure bleeder",
+             "Incomplete bleed on rear passenger caliper"),
+            ("Brake shudder at highway speeds since brake job two weeks ago",
+             "Front brake pads and rotors replacement",
+             "Rotors warped during improper bed-in; replaced rotors and performed correct procedure",
+             "Bed-in procedure not communicated or performed with customer"),
+            ("ABS and brake warning lights on after front caliper rebuild",
+             "Front brake caliper rebuild LF",
+             "Found ABS wheel speed sensor harness damaged during caliper work; replaced sensor",
+             "Speed sensor harness pinched during caliper installation"),
+            ("Grinding noise from RF since front pad replacement last week",
+             "Brake pad replacement front axle",
+             "Found anti-squeal shim missing on RF; installed shim and road tested",
+             "Anti-squeal shim not reinstalled during pad replacement"),
+            ("Excessive brake pedal travel after rear caliper piston service",
+             "Rear caliper piston wind-back and pad replacement",
+             "Found EPB actuator not reset; performed actuator reset procedure via ISTA",
+             "EPB actuator wind-back procedure not completed post-service"),
+            ("Rear brake drag and premature wear after parking brake cable adjustment",
+             "Parking brake cable adjustment",
+             "Found cable over-adjusted causing partial engagement; readjusted to specification",
+             "Cable over-tightened beyond specification causing constant light drag"),
+        ],
+        "Programming/Coding": [
+            ("Navigation system unresponsive since software update last visit",
+             "iDrive software update",
+             "Performed full ISTA software flash; reset NBT module to factory default",
+             "Incomplete write cycle during update due to low vehicle voltage"),
+            ("Bluetooth pairing lost and all settings reset after battery replacement",
+             "Battery replacement 60Ah AGM",
+             "Performed battery registration via ISTA; restored module memory values",
+             "Battery registration not performed post-replacement"),
+            ("EV charging inoperative after MINI Connected software update",
+             "MINI Connected software update",
+             "Rolled back to prior software version; re-coded EV charging module per TSB",
+             "Incompatible software version for this model year / charging module"),
+            ("DSC off and steering assist lost after control module coding session",
+             "Engine control module coding for performance upgrade",
+             "Restored correct DSC variant coding via ISTA; road tested all chassis systems",
+             "Incorrect variant code written to DSC module during coding session"),
+            ("Cruise control non-functional after instrument cluster replacement",
+             "Instrument cluster replacement",
+             "Programmed replacement cluster with VIN-specific data; adapted cruise module",
+             "Replacement cluster required VIN programming not performed at delivery"),
+            ("Start-Stop system disabled after TCU gearbox software flash",
+             "Gearbox software update per TSB",
+             "Found Start-Stop enable bit cleared by TSB flash; re-enabled via ISTA",
+             "TSB flash unintentionally reset Start-Stop enable flag"),
+        ],
+        "CBS Light Reset": [
+            ("CBS service light on 3 days after CBS reset",
+             "Oil service and CBS reset performed",
+             "Module not accepting reset via standard tool; performed via ISTA coding",
+             "Reset procedure timeout during original service visit"),
+            ("CBS light returning — third visit this month for same complaint",
+             "CBS light reset via OBD tool",
+             "Oil quality sensor found faulty; replaced sensor and reset CBS via ISTA",
+             "Faulty oil quality sensor triggering premature CBS warnings"),
+            ("CBS light on immediately after leaving dealership post-oil service",
+             "Engine oil service and CBS reset",
+             "Found incorrect oil grade; drained, refilled with correct 5W-30 LL-04, reset CBS",
+             "Wrong oil grade installed (5W-40 vs specified 5W-30 LL-04)"),
+            ("CBS brake interval warning on after pads and rotor replacement",
+             "Brake pad and rotor service front axle",
+             "Found brake wear sensor not replaced; installed sensor and reset CBS",
+             "Brake wear sensor not replaced during pad service as required by procedure"),
+            ("CBS light triggered again within 200 miles of last reset",
+             "Routine oil service and multi-point inspection",
+             "Performed CBS adaptation reset via ISTA; confirmed oil level and quality in range",
+             "CBS counter not fully reset using OBD tool — requires ISTA for this model year"),
+        ],
+        "Engine": [
+            ("Oil leak at valve cover persists after gasket replacement last month",
+             "Valve cover gasket replacement",
+             "Found gasket improperly seated at rear corner; replaced OEM gasket with correct torque sequence",
+             "Incorrect installation sequence — gasket pinched at rear during initial repair"),
+            ("Rough idle and hesitation on acceleration after throttle body cleaning",
+             "Throttle body cleaning and idle relearn",
+             "Performed idle adaptation and throttle body relearn per MINI procedure",
+             "Relearn procedure skipped after throttle body cleaning"),
+            ("Coolant temp warning and engine running hot after thermostat replacement",
+             "Thermostat replacement",
+             "Found air lock in cooling system; performed cooling system bleed procedure",
+             "Cooling system bleed not performed after thermostat replacement"),
+            ("Timing chain noise returned within 2 weeks of chain kit replacement",
+             "Timing chain kit replacement",
+             "Found chain tensioner pre-load set incorrectly; replaced tensioner and upper guide",
+             "Chain tensioner pre-load not set to specification during initial repair"),
+            ("Engine misfiring on cyl 4 after spark plug service",
+             "Spark plug replacement all cylinders and coil check",
+             "Found coil 4 connector loose; reseated and secured with OEM retaining clip",
+             "Coil 4 connector not fully latched during service"),
+            ("Oil pressure warning light on after valve clearance adjustment",
+             "Valve clearance check and adjustment",
+             "Found oil passage partially blocked by old gasket debris; flushed and cleared",
+             "Old gasket material entered oil passage during cylinder head work"),
+        ],
+        "Oil/Leaks": [
+            ("Customer states excessive oil consumption since engine service 3 weeks ago",
+             "Engine oil service + air filter replacement",
+             "Found incorrect viscosity used; drained and refilled with correct 5W-30",
+             "5W-40 used instead of specified 5W-30 LL-04"),
+            ("Oil drips under vehicle 5 days after oil service",
+             "Engine oil service 5W-30 full synthetic",
+             "Found drain plug overtorqued causing thread damage; installed thread repair insert",
+             "Drain plug overtorqued during service causing thread damage"),
+            ("Customer found oil spot in driveway same day as oil change",
+             "Engine oil service",
+             "Found loose oil filter; torqued to specification, leak resolved",
+             "Oil filter hand-tightened only, not torqued to specification"),
+            ("Coolant drip at upper hose fitting after cooling system service",
+             "Coolant flush and system refill",
+             "Found upper hose clamp left loose; tightened to spec and pressure tested",
+             "Hose clamp not fully tightened after refill during prior service"),
+            ("Power steering fluid drip after rack and pinion replacement",
+             "Rack and pinion replacement",
+             "Found high-pressure line fitting under-torqued; torqued to spec and road tested",
+             "High-pressure fitting under-torqued during rack installation"),
+            ("Transmission fluid leak at pan gasket after fluid service",
+             "Automatic transmission fluid pan reseal",
+             "Re-torqued all pan bolts in correct cross-pattern sequence; leak resolved",
+             "Torque sequence not followed — corner bolt backed out causing seep"),
+        ],
+        "Suspension": [
+            ("Clunking from front suspension continues after strut replacement",
+             "Front strut replacement LF and RF",
+             "Found loose strut top nut; torqued to specification 50 ft-lbs",
+             "Strut top nut not torqued to specification"),
+            ("Steering pulling right after 4-wheel alignment performed last week",
+             "4-wheel alignment to specification",
+             "Found RF tire severely worn on inside edge; replaced tire and re-aligned",
+             "Worn tire not identified during pre-alignment inspection"),
+            ("Creaking from rear over speed bumps after rear shock replacement",
+             "Rear shock replacement both sides",
+             "Found rear shock mount bushing cracked on driver side; replaced mount bushing",
+             "Worn mount bushing not inspected during shock replacement"),
+            ("Vehicle wanders on highway after front wheel bearing replacement",
+             "Front wheel bearing replacement LF",
+             "Found alignment shifted from bearing work; re-aligned all four wheels",
+             "Alignment check not performed after wheel bearing replacement"),
+            ("Knocking from front end after lower control arm replacement",
+             "Lower control arm replacement LF",
+             "Found sway bar end link loose; tightened to specification and verified torque",
+             "Sway bar end link not torqued during control arm work"),
+            ("Vibration at highway speed after tire balance and rotation",
+             "Tire balance and rotation all four",
+             "Found wheel weight missing on RF; rebalanced all four wheels on-car",
+             "Wheel weight adhesion failure — road debris impact after service"),
+        ],
+        "Tire Light Reset": [
+            ("Tire warning light came back on one week after sensor replacement",
+             "TPMS sensor replacement RF",
+             "Found RF sensor not initialized; performed full vehicle relearn with TPMS tool",
+             "Sensor installed but relearn procedure skipped"),
+            ("TPMS warning light on next day after all 4 sensors replaced",
+             "All 4 TPMS sensor replacement",
+             "Found LR sensor missing from relearn sequence; re-performed full vehicle relearn",
+             "LR sensor excluded from relearn sequence during initial service"),
+            ("Tire pressure warning immediately after tire rotation",
+             "Tire rotation all four wheels",
+             "Performed TPMS relearn after rotation; confirmed all four sensors registering",
+             "TPMS relearn not performed after rotation — sensor positions swapped in system"),
+            ("TPMS light flashing on cold mornings since winter tire changeover",
+             "Winter tire changeover and installation",
+             "Identified winter TPMS sensors needing relearn for new set; performed full relearn",
+             "Winter tire TPMS sensors not registered to vehicle during changeover"),
+        ],
+        "Tire Pressure Reset / Tire PSI Incorrect": [
+            ("TPMS light still on after all 4 tires inflated and sensor check performed",
+             "Tire rotation and pressure check",
+             "Found RF tire slow leak from nail; patched, reinflated, and reset TPMS",
+             "Nail in RF tire missed during rotation inspection"),
+            ("PSI readings incorrect on dashboard after tire pressure adjustment at last service",
+             "Tire pressure check and adjustment all 4 tires",
+             "Found TPMS sensor in LF tire failed; replaced sensor and performed relearn",
+             "Failed TPMS sensor not identified during pressure service"),
+            ("Front tires losing pressure gradually since last tire service",
+             "Tire pressure check and nitrogen fill all 4",
+             "Found valve stem cores loose on both front tires; tightened and leak-tested",
+             "Valve stem cores not fully retorqued after service"),
+            ("Dashboard shows LR tire at 15 PSI despite customer inflating this morning",
+             "Tire pressure check at routine oil service",
+             "Found LR valve stem damaged and leaking; replaced valve stem and reset TPMS",
+             "Damaged valve stem not identified during visual tire inspection"),
+        ],
+        "Tire/Brake Measurements Off": [
+            ("Brake pad measurements given at service differ from dashboard wear indicator",
+             "Brake inspection and pad measurement multi-point",
+             "Found rear pads at 2mm; replaced rear pads and recalibrated wear sensors",
+             "Rear pads not measured during inspection — only fronts checked"),
+            ("Customer states front tires show more wear than inspection report indicated",
+             "Multi-point inspection with tire tread depth check",
+             "Re-inspected RF; found 2/32 below safe threshold — replaced tire",
+             "RF tire tread depth misread or transcribed incorrectly on inspection form"),
+            ("Customer concerned brake measurements do not match prior visit report",
+             "Brake inspection multi-point",
+             "Found RF caliper sticking, causing accelerated inner pad wear; replaced caliper",
+             "Seized caliper slide pins not lubricated during last pad service"),
+            ("Alignment report shows within spec but vehicle tracks noticeably left",
+             "4-wheel alignment check and adjustment",
+             "Discovered alignment printout was from prior vehicle; re-aligned correctly",
+             "Paperwork mix-up — prior vehicle alignment results printed on customer invoice"),
+        ],
+        "Other": [
+            ("Squeaking from engine bay after serpentine belt replacement",
+             "Serpentine belt replacement",
+             "Found tensioner pulley bearing failing; replaced complete tensioner assembly",
+             "Tensioner bearing wear missed during belt inspection"),
+            ("Windshield wiper streaking immediately after blade replacement",
+             "Windshield wiper blade replacement front",
+             "Found incorrect blade profile for model; replaced with OEM profile blades",
+             "Incorrect aftermarket blade profile installed — did not match windshield curvature"),
+            ("Water entry at headliner since sunroof drain cleaning",
+             "Sunroof drain tube cleaning",
+             "Found drain tube kinked during cleaning; replaced tube and re-routed correctly",
+             "Drain tube kinked when cleaning probe inserted at wrong angle"),
+            ("A/C blowing warm air one day after system recharge",
+             "A/C system recharge",
+             "Found slow leak at condenser fitting O-ring; replaced O-ring, recharged to spec",
+             "O-ring disturbed during recharge connection — system not leak-tested post-service"),
+        ],
+    }
+
+    # ── Date helper (65% bias toward last 6 weeks) ────────────────────────────
+    def _rdate():
+        if rng.random() < 0.65:
+            days_ago = rng.randint(0, recent_days)
+        else:
+            days_ago = rng.randint(0, span_days)
+        return today - timedelta(days=days_ago)
+
+    # ── Build comeback records ─────────────────────────────────────────────────
+    ro_base   = 20001
+    to_insert = []
+    for idx, (vin, _visit) in enumerate(assignments):
+        cb_date   = _rdate()
+        orig_date = cb_date - timedelta(days=rng.randint(3, 21))
+        tech      = rng.choices(_TECHS, weights=_TECH_W, k=1)[0]
+        cat       = rng.choices(_CATS,  weights=_CAT_W,  k=1)[0]
+        flag      = rng.choice(_FLAGS)
+        vehicle   = vin_vehicle[vin]
+        concern, orig_repair, fix, root_cause = rng.choice(_SCRIPTS[cat])
+        to_insert.append(models.Comeback(
             comeback_date=cb_date,
-            original_repair_date=cb_date - timedelta(days=3),
-            ro_number=ro,
+            original_repair_date=orig_date,
+            ro_number=str(ro_base + idx),
             vin_last7=vin,
-            vehicle=veh,
+            vehicle=vehicle,
             technician_name=tech,
-            original_repair=orig,
+            original_repair=orig_repair,
             comeback_concern=concern,
             repair_category=cat,
             fix_performed=fix,
-            root_cause=root,
+            root_cause=root_cause,
             flag=flag,
             is_demo=True,
             is_repeat_vin=False,
             logged_by="demo_seed",
         ))
+    db.add_all(to_insert)
     db.commit()
 
-    # Update repeat-VIN flags within demo records
-    demo_vins = set(r[2] for r in R)
-    for vin in demo_vins:
-        recs = db.query(models.Comeback).filter(
-            models.Comeback.vin_last7 == vin,
-            models.Comeback.is_demo == True
-        ).all()
-        flag_val = len(recs) > 1
-        for rec in recs:
-            rec.is_repeat_vin = flag_val
+    # ── Mark repeat VINs ──────────────────────────────────────────────────────
+    for vin in vin_pool:
+        recs = (db.query(models.Comeback)
+                  .filter(models.Comeback.vin_last7 == vin, models.Comeback.is_demo == True)
+                  .all())
+        is_repeat = len(recs) > 1
+        for r in recs:
+            r.is_repeat_vin = is_repeat
     db.commit()
 
-    count = db.query(models.Comeback).filter(models.Comeback.is_demo == True).count()
-    return {"seeded": count}
+    return {"seeded": db.query(models.Comeback).filter(models.Comeback.is_demo == True).count()}
+

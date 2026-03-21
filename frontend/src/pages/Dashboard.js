@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -46,28 +46,44 @@ export default function Dashboard() {
   const { API } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState(null);       // error message string
+  const [unavailable, setUnavailable] = useState(false); // true for 5xx/network
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
     setError(null);
+    setUnavailable(false);
     axios.get(`${API}/dashboard/summary`)
-      .then(r => setData(r.data))
+      .then(r => { setData(r.data); })
       .catch(e => {
         const status = e.response?.status;
-        setError(
-          status === 401
-            ? "Session expired — please log in again."
-            : e.response?.data?.detail || e.message || "Failed to load dashboard"
-        );
+        if (status === 401) {
+          setError("Session expired — please log in again.");
+        } else if (!e.response || [502, 503, 504].includes(status)) {
+          setUnavailable(true);
+          setError("Service unavailable. Try again soon.");
+        } else {
+          setError(e.response?.data?.detail || e.message || "Failed to load dashboard");
+        }
       })
       .finally(() => setLoading(false));
   }, [API]);
 
+  useEffect(() => { load(); }, [load]);
+
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>;
   if (error) return (
     <div className="page-body" style={{ paddingTop: 40, textAlign: "center" }}>
-      <div style={{ color: "#f87171", fontSize: 14, background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.25)", borderRadius: 10, padding: "20px 28px", display: "inline-block" }}>
-        Failed to load dashboard: {error}
+      <div style={{ color: "#f87171", fontSize: 14, background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.25)", borderRadius: 10, padding: "20px 28px", display: "inline-block", maxWidth: 420 }}>
+        <div style={{ marginBottom: unavailable ? 14 : 0 }}>{error}</div>
+        {unavailable && (
+          <button
+            onClick={load}
+            style={{ padding: "7px 20px", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "1px solid rgba(248,113,113,0.4)", background: "rgba(248,113,113,0.12)", color: "#f87171" }}
+          >
+            Retry
+          </button>
+        )}
       </div>
     </div>
   );
