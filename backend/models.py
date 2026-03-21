@@ -41,3 +41,9 @@ class Comeback(Base):
     logged_by = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     technician_rel = relationship("Technician", back_populates="comebacks")
+
+class DealerSetting(Base):
+    __tablename__ = "dealer_settings"
+    key = Column(String, primary_key=True, index=True)
+    value = Column(String, nullable=False, default="")
+

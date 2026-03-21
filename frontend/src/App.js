@@ -6,6 +6,7 @@ import ComebackEntry from "./pages/ComebackEntry";
 import ComebackLog from "./pages/ComebackLog";
 import WeeklyReport from "./pages/WeeklyReport";
 import ManageTechs from "./pages/ManageTechs";
+import Settings from "./pages/Settings";
 import Layout, { getRoleHome, canAccess } from "./components/Layout";
 import "./App.css";
 
@@ -40,7 +41,8 @@ export default function App() {
             <Route path="entry"     element={<ProtectedRoute><ComebackEntry /></ProtectedRoute>} />
             <Route path="log"       element={<ProtectedRoute><ComebackLog /></ProtectedRoute>} />
             <Route path="report"    element={<ProtectedRoute><WeeklyReport /></ProtectedRoute>} />
-            <Route path="techs"     element={<ProtectedRoute><ManageTechs /></ProtectedRoute>} />
+            <Route path="settings"  element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="techs"     element={<Navigate to="/settings" replace />} />
           </Route>
           <Route path="*" element={<DefaultRedirect />} />
         </Routes>
