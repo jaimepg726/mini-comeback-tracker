@@ -52,7 +52,14 @@ export default function Dashboard() {
     setError(null);
     axios.get(`${API}/dashboard/summary`)
       .then(r => setData(r.data))
-      .catch(e => setError(e.response?.data?.detail || e.message || "Failed to load dashboard"))
+      .catch(e => {
+        const status = e.response?.status;
+        setError(
+          status === 401
+            ? "Session expired — please log in again."
+            : e.response?.data?.detail || e.message || "Failed to load dashboard"
+        );
+      })
       .finally(() => setLoading(false));
   }, [API]);
 
