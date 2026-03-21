@@ -54,11 +54,6 @@ export default function Login() {
             {loading ? "Signing in..." : "Sign In"}
           </button>
         </form>
-        <div style={{ marginTop: 24, padding: "12px", background: "var(--gray-800)", borderRadius: "var(--radius)", fontSize: 11, color: "var(--text-muted)" }}>
-          <strong style={{ color: "var(--text-muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Default Credentials</strong>
-          <div style={{ marginTop: 6 }}>Manager: <span style={{ color: "var(--text)" }}>manager / mini1234</span></div>
-          <div>Advisor: <span style={{ color: "var(--text)" }}>advisor / advisor1234</span></div>
-        </div>
       </div>
     </div>
   );

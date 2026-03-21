@@ -2,7 +2,30 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 
-const CATEGORIES = ["All Categories","Diagnosis","Electrical","Engine","Brake","Suspension","Programming/Coding","Oil/Leaks","CBS Light Reset","Tire Pressure Reset / Tire PSI Incorrect","Tire/Brake Measurements Off","Other"];
+const CATEGORIES = [
+  "All Categories", "Diagnosis", "Electrical", "Engine", "Brake", "Suspension",
+  "Programming/Coding", "Oil/Leaks",
+  "CBS Light Reset", "Tire Light Reset",
+  "Tire Pressure Reset / Tire PSI Incorrect", "Tire/Brake Measurements Off",
+  "Other",
+];
+
+const FLAG_STYLES = {
+  Safety: { background: "rgba(199,0,30,0.2)", color: "#f87171", border: "1px solid rgba(199,0,30,0.4)" },
+  "Customer Satisfaction": { background: "rgba(244,162,97,0.2)", color: "#f4a261", border: "1px solid rgba(244,162,97,0.4)" },
+  "Repeat VIN": { background: "rgba(255,190,11,0.2)", color: "#ffbe0b", border: "1px solid rgba(255,190,11,0.4)" },
+  Escalated: { background: "rgba(131,56,236,0.2)", color: "#a78bfa", border: "1px solid rgba(131,56,236,0.4)" },
+};
+
+function FlagBadge({ flag }) {
+  if (!flag) return <span className="text-muted">—</span>;
+  const style = FLAG_STYLES[flag] || { background: "rgba(107,114,128,0.2)", color: "#9ca3af", border: "1px solid rgba(107,114,128,0.3)" };
+  return (
+    <span style={{ ...style, padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
+      ⚑ {flag}
+    </span>
+  );
+}
 
 export default function ComebackLog() {
   const { API, user } = useAuth();
@@ -63,6 +86,12 @@ export default function ComebackLog() {
       setExporting(false);
     }
   };
+
+  // Build per-VIN count map for repeat indicator
+  const vinCounts = {};
+  comebacks.forEach(c => {
+    if (c.vin_last7) vinCounts[c.vin_last7] = (vinCounts[c.vin_last7] || 0) + 1;
+  });
 
   const filtered = comebacks.filter(c => {
     if (filterTech !== "All" && c.technician_name !== filterTech) return false;
@@ -132,21 +161,45 @@ export default function ComebackLog() {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Date</th><th>Technician</th><th>RO #</th><th>VIN</th><th>Vehicle</th><th>Category</th><th>Flag</th>{user?.role === "manager" && <th>Actions</th>}</tr>
+                <tr>
+                  <th>Date</th>
+                  <th>Technician</th>
+                  <th>RO #</th>
+                  <th>VIN</th>
+                  <th>Vehicle</th>
+                  <th>Category</th>
+                  <th>Flag</th>
+                  {user?.role === "manager" && <th>Actions</th>}
+                </tr>
               </thead>
               <tbody>
-                {filtered.length === 0 && (<tr><td colSpan={8} style={{ textAlign: "center", color: "var(--text-muted)", padding: 32 }}>No records found.</td></tr>)}
+                {filtered.length === 0 && (
+                  <tr><td colSpan={8} style={{ textAlign: "center", color: "var(--text-muted)", padding: 32 }}>No records found.</td></tr>
+                )}
                 {filtered.map(c => (
                   <>
                     <tr key={c.id} style={{ cursor: "pointer" }} onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}>
                       <td>{fmtDate(c.comeback_date)}</td>
                       <td style={{ fontWeight: 600 }}>{c.technician_name}</td>
                       <td className="text-muted">{c.ro_number || "—"}</td>
-                      <td className="text-muted">{c.vin_last7 || "—"}</td>
+                      <td className="text-muted">
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          <span>{c.vin_last7 || "—"}</span>
+                          {c.vin_last7 && vinCounts[c.vin_last7] > 1 && (
+                            <span style={{ background: "rgba(199,0,30,0.15)", color: "#f87171", border: "1px solid rgba(199,0,30,0.3)", borderRadius: 10, fontSize: 10, fontWeight: 700, padding: "1px 6px", whiteSpace: "nowrap" }}>
+                              REPEAT ×{vinCounts[c.vin_last7]}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td>{c.vehicle || "—"}</td>
                       <td>{c.repair_category ? <span className="badge badge-muted">{c.repair_category}</span> : "—"}</td>
-                      <td>{c.is_repeat_vin ? <span className="badge badge-danger">REPEAT VIN</span> : <span className="text-muted">—</span>}</td>
-                      {user?.role === "manager" && (<td onClick={e => e.stopPropagation()}><button className="btn btn-ghost" onClick={() => handleDelete(c.id)}>Delete</button></td>)}
+                      <td><FlagBadge flag={c.flag} /></td>
+                      {user?.role === "manager" && (
+                        <td onClick={e => e.stopPropagation()}>
+                          <button className="btn btn-ghost" onClick={() => handleDelete(c.id)}>Delete</button>
+                        </td>
+                      )}
                     </tr>
                     {expandedId === c.id && (
                       <tr key={`${c.id}-expand`}>

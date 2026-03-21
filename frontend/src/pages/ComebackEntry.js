@@ -3,9 +3,27 @@ import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 
 const CATEGORIES = [
-  "Diagnosis", "Electrical", "Engine", "Brake",
-  "Suspension", "Programming/Coding", "Oil/Leaks", "Other",
+  "Diagnosis", "Electrical", "Engine", "Brake", "Suspension",
+  "Programming/Coding", "Oil/Leaks",
+  "CBS Light Reset", "Tire Light Reset",
+  "Tire Pressure Reset / Tire PSI Incorrect", "Tire/Brake Measurements Off",
+  "Other",
 ];
+
+const FLAGS = [
+  { value: "", label: "No Flag" },
+  { value: "Safety", label: "Safety" },
+  { value: "Customer Satisfaction", label: "Customer Satisfaction" },
+  { value: "Repeat VIN", label: "Repeat VIN" },
+  { value: "Escalated", label: "Escalated" },
+];
+
+const FLAG_COLORS = {
+  Safety: "#C7001E",
+  "Customer Satisfaction": "#f4a261",
+  "Repeat VIN": "#ffbe0b",
+  Escalated: "#8338ec",
+};
 
 const today = () => new Date().toISOString().split("T")[0];
 
@@ -25,7 +43,9 @@ export default function ComebackEntry() {
     fix_performed: "",
     root_cause: "",
     notes: "",
+    flag: "",
   });
+  const [vinError, setVinError] = useState("");
   const [status, setStatus] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [successCount, setSuccessCount] = useState(0);
@@ -36,17 +56,35 @@ export default function ComebackEntry() {
 
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
 
-  const resetForm = () => setForm({
-    comeback_date: today(), original_repair_date: "",
-    ro_number: "", vin_last7: "", vehicle: "",
-    technician_name: form.technician_name,
-    original_repair: "", comeback_concern: "",
-    repair_category: "", fix_performed: "", root_cause: "", notes: "",
-  });
+  const handleVinChange = (val) => {
+    const upper = val.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 7);
+    set("vin_last7", upper);
+    if (upper && upper.length !== 7) {
+      setVinError("VIN must be exactly 7 alphanumeric characters");
+    } else {
+      setVinError("");
+    }
+  };
+
+  const resetForm = () => {
+    setVinError("");
+    setForm({
+      comeback_date: today(), original_repair_date: "",
+      ro_number: "", vin_last7: "", vehicle: "",
+      technician_name: form.technician_name,
+      original_repair: "", comeback_concern: "",
+      repair_category: "", fix_performed: "", root_cause: "", notes: "",
+      flag: "",
+    });
+  };
 
   const handleSubmit = async () => {
     if (!form.vehicle || !form.technician_name || !form.repair_category || !form.comeback_concern) {
       setStatus("error");
+      return;
+    }
+    if (form.vin_last7 && form.vin_last7.length !== 7) {
+      setVinError("VIN must be exactly 7 alphanumeric characters");
       return;
     }
     setSubmitting(true);
@@ -54,6 +92,7 @@ export default function ComebackEntry() {
     try {
       const payload = { ...form };
       if (!payload.original_repair_date) delete payload.original_repair_date;
+      if (!payload.flag) delete payload.flag;
       await axios.post(`${API}/comebacks`, payload);
       setStatus("success");
       setSuccessCount(n => n + 1);
@@ -117,7 +156,15 @@ export default function ComebackEntry() {
             </div>
             <div className="form-group">
               <label>VIN Last 7</label>
-              <input type="text" maxLength={7} value={form.vin_last7} onChange={e => set("vin_last7", e.target.value.toUpperCase())} placeholder="e.g. AB12345" style={{ textTransform: "uppercase" }} />
+              <input
+                type="text"
+                maxLength={7}
+                value={form.vin_last7}
+                onChange={e => handleVinChange(e.target.value)}
+                placeholder="e.g. AB12345"
+                style={{ textTransform: "uppercase", borderColor: vinError ? "#f87171" : undefined }}
+              />
+              {vinError && <div style={{ color: "#f87171", fontSize: 11, marginTop: 4, fontWeight: 500 }}>⚠ {vinError}</div>}
             </div>
             <div className="form-group">
               <label>Comeback Date *</label>
@@ -159,6 +206,36 @@ export default function ComebackEntry() {
             </div>
           )}
         </div>
+
+        {isManager && (
+          <div className="card section-gap">
+            <div className="card-title">Flag</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {FLAGS.map(f => (
+                <button
+                  key={f.value}
+                  type="button"
+                  onClick={() => set("flag", f.value)}
+                  style={{
+                    padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: 600,
+                    cursor: "pointer", transition: "all 0.15s",
+                    border: form.flag === f.value
+                      ? `2px solid ${FLAG_COLORS[f.value] || "#6b7280"}`
+                      : "2px solid var(--border)",
+                    background: form.flag === f.value
+                      ? `${FLAG_COLORS[f.value] || "#374151"}22`
+                      : "var(--gray-800)",
+                    color: form.flag === f.value
+                      ? (FLAG_COLORS[f.value] || "#9ca3af")
+                      : "var(--text-muted)",
+                  }}
+                >
+                  {f.value ? `⚑ ${f.label}` : f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="card section-gap">
           <div className="card-title">Concern Details</div>
