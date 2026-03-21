@@ -19,6 +19,7 @@ export function AuthProvider({ children }) {
   });
   const [token, setToken] = useState(storedToken);
   const [loading, setLoading] = useState(false);
+  const [demoMode, setDemoMode] = useState(false);
 
   useEffect(() => {
     if (token) {
@@ -27,6 +28,24 @@ export function AuthProvider({ children }) {
       delete axios.defaults.headers.common["Authorization"];
     }
   }, [token]);
+
+  const refreshDemoMode = async () => {
+    try {
+      const res = await axios.get(`${API}/settings`);
+      setDemoMode(res.data?.demo_mode_enabled === "true");
+    } catch {
+      // non-fatal
+    }
+  };
+
+  useEffect(() => {
+    const stored = localStorage.getItem("userInfo");
+    const info = stored ? JSON.parse(stored) : null;
+    if (info?.role === "manager" && storedToken) {
+      refreshDemoMode();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const login = async (username, password) => {
     const form = new FormData();
@@ -40,6 +59,12 @@ export function AuthProvider({ children }) {
     axios.defaults.headers.common["Authorization"] = `Bearer ${access_token}`;
     setToken(access_token);
     setUser(userInfo);
+    if (role === "manager") {
+      try {
+        const s = await axios.get(`${API}/settings`, { headers: { Authorization: `Bearer ${access_token}` } });
+        setDemoMode(s.data?.demo_mode_enabled === "true");
+      } catch { /* non-fatal */ }
+    }
     return userInfo;
   };
 
@@ -49,10 +74,11 @@ export function AuthProvider({ children }) {
     delete axios.defaults.headers.common["Authorization"];
     setToken(null);
     setUser(null);
+    setDemoMode(false);
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading, API }}>
+    <AuthContext.Provider value={{ user, token, login, logout, loading, API, demoMode, refreshDemoMode }}>
       {children}
     </AuthContext.Provider>
   );

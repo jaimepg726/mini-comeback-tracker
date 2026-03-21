@@ -6,6 +6,7 @@ import ManageTechs from "./ManageTechs";
 const TABS = [
   { id: "technicians", label: "Technicians" },
   { id: "dealer",      label: "Dealer Settings" },
+  { id: "demo",        label: "Demo Mode" },
   { id: "data",        label: "Data & Export" },
 ];
 
@@ -214,6 +215,151 @@ function DataTab() {
   );
 }
 
+// ─── Demo Mode tab ───────────────────────────────────────────────────────────
+
+function DemoModeTab() {
+  const { API, demoMode, refreshDemoMode } = useAuth();
+  const [stats, setStats] = useState(null);
+  const [loadingStats, setLoadingStats] = useState(true);
+  const [seeding, setSeeding] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const flash = (text, ok = true) => {
+    setMsg({ text, ok });
+    setTimeout(() => setMsg(null), 3500);
+  };
+
+  const loadStats = () => {
+    setLoadingStats(true);
+    axios.get(`${API}/demo/stats`)
+      .then(r => setStats(r.data))
+      .catch(() => setStats(null))
+      .finally(() => setLoadingStats(false));
+  };
+
+  useEffect(() => { loadStats(); }, [API]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSeed = async () => {
+    setSeeding(true);
+    try {
+      const r = await axios.post(`${API}/demo/seed`);
+      flash(`✓ ${r.data.seeded} demo records created`);
+      loadStats();
+    } catch (e) {
+      flash(e.response?.data?.detail || "Seed failed", false);
+    } finally { setSeeding(false); }
+  };
+
+  const handleClear = async () => {
+    setClearing(true);
+    try {
+      const r = await axios.delete(`${API}/demo/clear`);
+      flash(`✓ ${r.data.deleted} demo records removed`);
+      loadStats();
+    } catch (e) {
+      flash(e.response?.data?.detail || "Clear failed", false);
+    } finally { setClearing(false); }
+  };
+
+  const handleToggle = async () => {
+    setToggling(true);
+    const newVal = demoMode ? "false" : "true";
+    try {
+      await axios.put(`${API}/settings/demo_mode_enabled`, { value: newVal });
+      await refreshDemoMode();
+      flash(`Demo mode ${newVal === "true" ? "enabled" : "disabled"}`);
+    } catch (e) {
+      flash(e.response?.data?.detail || "Toggle failed", false);
+    } finally { setToggling(false); }
+  };
+
+  const btnStyle = (color, disabled) => ({
+    padding: "9px 20px", borderRadius: 6, fontSize: 13, fontWeight: 600,
+    cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1,
+    border: `1px solid ${color}55`, background: `${color}18`, color,
+    transition: "all 0.2s", whiteSpace: "nowrap",
+  });
+
+  return (
+    <div>
+      {msg && (
+        <div style={{
+          position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)",
+          background: msg.ok ? "#166534" : "#7f1d1d", color: "#fff",
+          padding: "12px 24px", borderRadius: 8, fontWeight: 600, fontSize: 14,
+          zIndex: 9999, boxShadow: "0 4px 16px rgba(0,0,0,0.4)", whiteSpace: "nowrap",
+        }}>{msg.text}</div>
+      )}
+
+      <div className="card section-gap">
+        <div className="card-title">Demo Mode</div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24, padding: "16px 20px", borderRadius: 8, background: demoMode ? "rgba(146,64,14,0.2)" : "var(--gray-800)", border: demoMode ? "1px solid #b45309" : "1px solid var(--border)" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, color: demoMode ? "#fbbf24" : "var(--text)" }}>
+              Demo Mode is <strong>{demoMode ? "ON" : "OFF"}</strong>
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+              When enabled, only seeded demo records are shown. Real comebacks are hidden. New records cannot be submitted.
+            </div>
+          </div>
+          <button
+            onClick={handleToggle}
+            disabled={toggling}
+            style={{
+              ...btnStyle(demoMode ? "#fbbf24" : "#16a34a", toggling),
+              minWidth: 120,
+            }}
+          >
+            {toggling ? "Updating…" : demoMode ? "Disable Demo" : "Enable Demo"}
+          </button>
+        </div>
+
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 24 }}>
+          <button onClick={handleSeed} disabled={seeding} style={btnStyle("#60a5fa", seeding)}>
+            {seeding ? "Seeding…" : "⚡ Seed Demo Data"}
+          </button>
+          <button onClick={handleClear} disabled={clearing} style={btnStyle("#f87171", clearing)}>
+            {clearing ? "Clearing…" : "✕ Clear Demo Data"}
+          </button>
+        </div>
+
+        {loadingStats ? (
+          <div style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading stats…</div>
+        ) : stats ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
+            {[
+              { label: "Demo Records", value: stats.total_demo },
+              { label: "Real Records", value: stats.total_real },
+              { label: "Technicians", value: stats.demo_technicians },
+              { label: "Categories", value: stats.demo_categories },
+            ].map(s => (
+              <div key={s.label} style={{ background: "var(--gray-800)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 16px", textAlign: "center" }}>
+                <div style={{ fontSize: 24, fontWeight: 800, color: "#e5e7eb" }}>{s.value ?? "—"}</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Stats unavailable.</div>
+        )}
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-title">How Demo Mode Works</div>
+        <div style={{ display: "grid", gap: 10, fontSize: 13, color: "var(--text-muted)" }}>
+          <div><strong style={{ color: "var(--text)" }}>Seed Demo Data</strong> — creates 35 realistic comeback records using sample technicians, VINs, and categories. Safe to run multiple times (clears first).</div>
+          <div><strong style={{ color: "var(--text)" }}>Enable Demo</strong> — switches all read views to show only demo records. Real data is hidden but never deleted.</div>
+          <div><strong style={{ color: "var(--text)" }}>Disable Demo</strong> — immediately restores real data. Demo records remain until you clear them.</div>
+          <div><strong style={{ color: "var(--text)" }}>Clear Demo Data</strong> — permanently removes all demo records. Real records are never affected.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Settings page ───────────────────────────────────────────────────────────
 
 export default function Settings() {
@@ -235,6 +381,7 @@ export default function Settings() {
 
         {tab === "technicians" && <ManageTechs asTab />}
         {tab === "dealer"      && <DealerSettingsTab />}
+        {tab === "demo"        && <DemoModeTab />}
         {tab === "data"        && <DataTab />}
       </div>
     </>
