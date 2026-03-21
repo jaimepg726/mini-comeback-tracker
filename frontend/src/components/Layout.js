@@ -7,7 +7,7 @@ const ROLE_NAV = {
     { to: "/entry",      label: "Log Comeback" },
     { to: "/log",        label: "All Comebacks" },
     { to: "/report",     label: "Weekly Report" },
-    { to: "/techs",      label: "Technicians" },
+    { to: "/settings",   label: "Settings" },
   ],
   foreman: [
     { to: "/dashboard",  label: "Dashboard" },

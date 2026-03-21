@@ -12,6 +12,31 @@ CATEGORIES = [
     "Other",
 ]
 
+SETTING_DEFAULTS = {
+    "repeat_vin_window_days": "0",     # 0 = all-time
+    "dashboard_week_start": "Monday",
+}
+
+def get_setting(db, key: str) -> str:
+    s = db.query(models.DealerSetting).filter(models.DealerSetting.key == key).first()
+    return s.value if s else SETTING_DEFAULTS.get(key, "")
+
+def get_all_settings(db) -> dict:
+    result = dict(SETTING_DEFAULTS)
+    for s in db.query(models.DealerSetting).all():
+        result[s.key] = s.value
+    return result
+
+def upsert_setting(db, key: str, value: str) -> dict:
+    s = db.query(models.DealerSetting).filter(models.DealerSetting.key == key).first()
+    if s:
+        s.value = value
+    else:
+        s = models.DealerSetting(key=key, value=value)
+        db.add(s)
+    db.commit()
+    return {"key": key, "value": value}
+
 def get_user_by_username(db, username):
     return db.query(models.User).filter(models.User.username == username).first()
 
@@ -53,10 +78,13 @@ def delete_technician(db, tech_id):
         db.delete(tech); db.commit()
     return tech
 
-def _check_repeat_vin(db, vin_last7, exclude_id=None):
+def _check_repeat_vin(db, vin_last7, exclude_id=None, window_days=0):
     if not vin_last7:
         return False
     q = db.query(models.Comeback).filter(models.Comeback.vin_last7 == vin_last7, models.Comeback.is_demo == False)
+    if window_days and window_days > 0:
+        cutoff = date.today() - timedelta(days=window_days)
+        q = q.filter(models.Comeback.comeback_date >= cutoff)
     if exclude_id:
         q = q.filter(models.Comeback.id != exclude_id)
     return q.count() > 0
@@ -69,8 +97,16 @@ def _update_repeat_flags(db, vin_last7):
     db.commit()
 
 def create_comeback(db, comeback, logged_by):
-    is_repeat = _check_repeat_vin(db, comeback.vin_last7)
-    db_cb = models.Comeback(**comeback.dict(), is_repeat_vin=is_repeat, logged_by=logged_by)
+    try:
+        window_days = int(get_setting(db, "repeat_vin_window_days"))
+    except (ValueError, TypeError):
+        window_days = 0
+    is_repeat = _check_repeat_vin(db, comeback.vin_last7, window_days=window_days)
+    data = comeback.model_dump()
+    # Normalize: empty string flag → None
+    if not data.get("flag"):
+        data["flag"] = None
+    db_cb = models.Comeback(**data, is_repeat_vin=is_repeat, logged_by=logged_by)
     db.add(db_cb); db.commit()
     if comeback.vin_last7:
         _update_repeat_flags(db, comeback.vin_last7)
@@ -85,7 +121,10 @@ def update_comeback(db, comeback_id, update):
     if not cb:
         return None
     old_vin = cb.vin_last7
-    for field, value in update.dict(exclude_unset=True).items():
+    for field, value in update.model_dump(exclude_unset=True).items():
+        # Normalize empty flag to None
+        if field == "flag" and not value:
+            value = None
         setattr(cb, field, value)
     if update.vin_last7 and update.vin_last7 != old_vin:
         cb.is_repeat_vin = _check_repeat_vin(db, update.vin_last7, exclude_id=comeback_id)

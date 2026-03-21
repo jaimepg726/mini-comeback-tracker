@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict
 from datetime import date, datetime
 
 class Token(BaseModel):
@@ -86,3 +86,6 @@ class ComebackOut(BaseModel):
     created_at: datetime
     class Config:
         from_attributes = True
+
+class SettingUpdate(BaseModel):
+    value: str

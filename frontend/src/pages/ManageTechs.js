@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 
-export default function ManageTechs() {
+export default function ManageTechs({ asTab = false }) {
   const { API } = useAuth();
   const [techs, setTechs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -78,16 +78,18 @@ export default function ManageTechs() {
         </div>
       )}
 
-      <div className="page-header">
-        <div className="flex-between">
-          <div>
-            <div className="page-title">Manage Technicians</div>
-            <div className="page-subtitle">Add or deactivate technicians from the roster</div>
+      {!asTab && (
+        <div className="page-header">
+          <div className="flex-between">
+            <div>
+              <div className="page-title">Manage Technicians</div>
+              <div className="page-subtitle">Add or deactivate technicians from the roster</div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="page-body">
+      <div className={asTab ? undefined : "page-body"}>
         {/* Add technician */}
         <div className="card section-gap">
           <div className="card-title">Add Technician</div>

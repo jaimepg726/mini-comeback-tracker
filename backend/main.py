@@ -150,6 +150,19 @@ def delete_technician(tech_id: int, db: Session = Depends(get_db), current_user=
     if not tech:
         raise HTTPException(status_code=404, detail="Technician not found")
     return {"ok": True}
+@app.get("/settings")
+def get_settings(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user.role != "manager":
+        raise HTTPException(status_code=403, detail="Manager access required")
+    return crud.get_all_settings(db)
+@app.put("/settings/{key}")
+def update_setting(key: str, body: schemas.SettingUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user.role != "manager":
+        raise HTTPException(status_code=403, detail="Manager access required")
+    allowed_keys = set(crud.SETTING_DEFAULTS.keys())
+    if key not in allowed_keys:
+        raise HTTPException(status_code=400, detail=f"Unknown setting key: {key}")
+    return crud.upsert_setting(db, key, body.value)
 @app.on_event("startup")
 def run_migrations():
     import sqlite3, logging
@@ -184,5 +197,9 @@ def seed_defaults():
         for t in ["Jake", "Ernie", "Jeisson", "Michael", "Manny"]:
             if not crud.get_technician_by_name(db, t):
                 crud.create_technician(db, schemas.TechnicianCreate(name=t, role="Technician"))
+        for key, default_val in crud.SETTING_DEFAULTS.items():
+            if not db.query(models.DealerSetting).filter(models.DealerSetting.key == key).first():
+                db.add(models.DealerSetting(key=key, value=default_val))
+        db.commit()
     finally:
         db.close()
