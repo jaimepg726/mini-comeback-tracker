@@ -1,8 +1,10 @@
 import axios from "axios";
 
-// Use REACT_APP_API_URL if provided (set at build time for separate-backend deploys).
-// Otherwise default to '' so requests go same-origin and nginx proxies them to the backend.
-export const API_BASE = process.env.REACT_APP_API_URL || "";
+// API_ORIGIN is the host only (empty = same-origin). All routes live under /api.
+// REACT_APP_API_URL overrides origin at build time for separate-backend deployments.
+// apiClient helpers prepend API_BASE so callers just write apiGet('/demo/stats') etc.
+const API_ORIGIN = process.env.REACT_APP_API_URL || "";
+export const API_BASE = `${API_ORIGIN}/api`;
 
 const isDev = process.env.NODE_ENV === "development";
 

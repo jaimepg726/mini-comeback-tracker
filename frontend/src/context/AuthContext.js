@@ -4,9 +4,10 @@ import axios from "axios";
 const AuthContext = createContext(null);
 
 // build: 2026-03-21
-// Same-origin default (nginx proxies /token, /dashboard, etc. to backend).
-// Set REACT_APP_API_URL at build time for separate-backend deployments.
-const API = process.env.REACT_APP_API_URL || "";
+// API_ORIGIN is the host only (empty = same-origin, proxied by nginx /api/).
+// All callers use `${API}/...` which resolves to `/api/...` by default.
+const API_ORIGIN = process.env.REACT_APP_API_URL || "";
+const API = `${API_ORIGIN}/api`;
 
 // Set auth header immediately on module load so first API calls are authenticated
 const storedToken = localStorage.getItem("token");
