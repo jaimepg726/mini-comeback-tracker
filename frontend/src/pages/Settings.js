@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import ManageTechs from "./ManageTechs";
-import { apiGet, apiPost, apiDelete } from "../utils/apiClient";
+import { apiGet, apiPost, apiPut, apiDelete } from "../utils/apiClient";
 
 const TABS = [
   { id: "technicians", label: "Technicians" },
@@ -219,7 +219,7 @@ function DataTab() {
 // ─── Demo Mode tab ───────────────────────────────────────────────────────────
 
 function DemoModeTab() {
-  const { API, demoMode, refreshDemoMode } = useAuth();
+  const { demoMode, refreshDemoMode } = useAuth();
   const [stats, setStats] = useState(null);
   const [statsError, setStatsError] = useState(null);
   const [loadingStats, setLoadingStats] = useState(true);
@@ -251,7 +251,7 @@ function DemoModeTab() {
       .finally(() => setLoadingStats(false));
   };
 
-  useEffect(() => { loadStats(); }, [API]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadStats(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSeed = async () => {
     setSeeding(true);
@@ -291,11 +291,11 @@ function DemoModeTab() {
     setToggling(true);
     const newVal = demoMode ? "false" : "true";
     try {
-      await axios.put(`${API}/settings/demo_mode_enabled`, { value: newVal });
+      await apiPut("/settings/demo_mode_enabled", { value: newVal });
       await refreshDemoMode();
       flash(`Demo mode ${newVal === "true" ? "enabled" : "disabled"}`);
     } catch (e) {
-      flash(e.response?.data?.detail || "Toggle failed", false);
+      flash(e.message || "Toggle failed", false);
     } finally { setToggling(false); }
   };
 
