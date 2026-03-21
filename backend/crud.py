@@ -249,15 +249,23 @@ def get_comebacks_csv(db, start_date=None, end_date=None, technician=None, categ
 # ─── Demo data ───────────────────────────────────────────────────────────────
 
 def get_demo_stats(db) -> dict:
-    count = db.query(models.Comeback).filter(models.Comeback.is_demo == True).count()
-    last = (db.query(models.Comeback)
-              .filter(models.Comeback.is_demo == True)
-              .order_by(models.Comeback.created_at.desc())
-              .first())
+    total_demo = db.query(models.Comeback).filter(models.Comeback.is_demo == True).count()
+    total_real = db.query(models.Comeback).filter(models.Comeback.is_demo == False).count()
+    demo_technicians = (
+        db.query(func.count(models.Comeback.technician_name.distinct()))
+          .filter(models.Comeback.is_demo == True)
+          .scalar() or 0
+    )
+    demo_categories = (
+        db.query(func.count(models.Comeback.repair_category.distinct()))
+          .filter(models.Comeback.is_demo == True)
+          .scalar() or 0
+    )
     return {
-        "demo_count": count,
-        "demo_mode_enabled": get_demo_mode(db),
-        "last_seeded_at": last.created_at.isoformat() if last else None,
+        "total_demo": total_demo,
+        "total_real": total_real,
+        "demo_technicians": demo_technicians,
+        "demo_categories": demo_categories,
     }
 
 def clear_demo_comebacks(db) -> dict:
