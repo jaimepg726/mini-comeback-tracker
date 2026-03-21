@@ -41,7 +41,7 @@ export function canAccess(role, path) {
 }
 
 export default function Layout() {
-  const { user, logout } = useAuth();
+  const { user, logout, demoMode } = useAuth();
   const navigate = useNavigate();
   const handleLogout = () => { logout(); navigate("/login"); };
 
@@ -100,6 +100,17 @@ export default function Layout() {
           </div>
         </div>
       </header>
+
+      {demoMode && (
+        <div style={{
+          background: "#92400e", color: "#fef3c7",
+          padding: "10px 24px", textAlign: "center",
+          fontSize: 13, fontWeight: 600, letterSpacing: "0.02em",
+          borderBottom: "1px solid #b45309",
+        }}>
+          ⚠ DEMO MODE — Sample data only. Real comebacks are hidden. No records are being written.
+        </div>
+      )}
 
       <main style={{ maxWidth: 1400, margin: "0 auto", padding: "32px 24px" }}>
         <Outlet />

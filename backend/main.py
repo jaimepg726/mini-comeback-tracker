@@ -68,10 +68,12 @@ def read_me(current_user=Depends(get_current_user)):
     return current_user
 @app.post("/comebacks", response_model=schemas.ComebackOut)
 def create_comeback(comeback: schemas.ComebackCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if crud.get_demo_mode(db):
+        raise HTTPException(status_code=403, detail="Demo mode active — real writes are disabled")
     return crud.create_comeback(db, comeback, logged_by=current_user.username)
 @app.get("/comebacks", response_model=List[schemas.ComebackOut])
 def list_comebacks(skip: int = 0, limit: int = 200, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    return crud.get_comebacks(db, skip=skip, limit=limit)
+    return crud.get_comebacks(db, skip=skip, limit=limit, demo_mode=crud.get_demo_mode(db))
 @app.put("/comebacks/{comeback_id}", response_model=schemas.ComebackOut)
 def update_comeback(comeback_id: int, update: schemas.ComebackUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user.role != "manager":
@@ -88,7 +90,7 @@ def delete_comeback(comeback_id: int, db: Session = Depends(get_db), current_use
     return {"ok": True}
 @app.get("/dashboard/summary")
 def dashboard_summary(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    return crud.get_dashboard_summary(db)
+    return crud.get_dashboard_summary(db, demo_mode=crud.get_demo_mode(db))
 @app.get("/comebacks/export-csv")
 def export_comebacks_csv(
     start_date: str = None,
@@ -101,7 +103,7 @@ def export_comebacks_csv(
 ):
     import csv, io
     from fastapi.responses import StreamingResponse
-    rows = crud.get_comebacks_csv(db, start_date=start_date, end_date=end_date, technician=technician, category=category, repeat_only=repeat_only)
+    rows = crud.get_comebacks_csv(db, start_date=start_date, end_date=end_date, technician=technician, category=category, repeat_only=repeat_only, demo_mode=crud.get_demo_mode(db))
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["Date","RO Number","Technician","Vehicle","VIN Last 7","Category","Customer Concern","Original Repair Date","Original Repair","Fix Performed","Root Cause","Notes","Repeat VIN","Logged By"])
@@ -112,7 +114,22 @@ def export_comebacks_csv(
     return StreamingResponse(iter([output.getvalue()]), media_type="text/csv", headers={"Content-Disposition": f"attachment; filename={filename}"})
 @app.get("/dashboard/weekly-report")
 def weekly_report(start_date: str = None, end_date: str = None, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    return crud.get_weekly_report(db, start_date=start_date, end_date=end_date)
+    return crud.get_weekly_report(db, start_date=start_date, end_date=end_date, demo_mode=crud.get_demo_mode(db))
+@app.get("/demo/stats")
+def demo_stats(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user.role != "manager":
+        raise HTTPException(status_code=403, detail="Manager access required")
+    return crud.get_demo_stats(db)
+@app.post("/demo/seed")
+def demo_seed(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user.role != "manager":
+        raise HTTPException(status_code=403, detail="Manager access required")
+    return crud.seed_demo_comebacks(db)
+@app.delete("/demo/clear")
+def demo_clear(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user.role != "manager":
+        raise HTTPException(status_code=403, detail="Manager access required")
+    return crud.clear_demo_comebacks(db)
 @app.get("/technicians", response_model=List[schemas.TechnicianOut])
 def list_technicians(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     return crud.get_technicians(db)

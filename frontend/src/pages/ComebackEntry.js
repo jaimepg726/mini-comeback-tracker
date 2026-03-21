@@ -28,7 +28,7 @@ const FLAG_COLORS = {
 const today = () => new Date().toISOString().split("T")[0];
 
 export default function ComebackEntry() {
-  const { API, user } = useAuth();
+  const { API, user, demoMode } = useAuth();
   const [techs, setTechs] = useState([]);
   const [form, setForm] = useState({
     comeback_date: today(),
@@ -130,6 +130,15 @@ export default function ComebackEntry() {
       </div>
 
       <div className="page-body">
+        {demoMode && (
+          <div style={{
+            background: "rgba(146,64,14,0.25)", border: "1px solid #b45309",
+            borderRadius: 8, padding: "14px 18px", marginBottom: 20,
+            color: "#fbbf24", fontWeight: 600, fontSize: 14,
+          }}>
+            ⚠ Demo Mode is active — new comebacks cannot be submitted. Disable Demo Mode in Settings to resume logging.
+          </div>
+        )}
         {status === "error" && (
           <div className="alert alert-error" style={{ marginBottom: 16 }}>
             ✗ Fill in all required fields: Vehicle, Technician, Category, and Concern.
@@ -281,7 +290,7 @@ export default function ComebackEntry() {
         )}
 
         <div style={{ display: "flex", gap: 12, marginTop: 8, paddingBottom: 40 }}>
-          <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting} style={{ minWidth: 180, padding: "14px 24px", fontSize: 16 }}>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting || demoMode} style={{ minWidth: 180, padding: "14px 24px", fontSize: 16, opacity: demoMode ? 0.45 : 1 }}>
             {submitting ? "Saving..." : "Submit Comeback"}
           </button>
           <button className="btn btn-ghost" onClick={resetForm} type="button">Clear Form</button>
