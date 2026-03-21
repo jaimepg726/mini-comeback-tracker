@@ -48,6 +48,7 @@ class ComebackCreate(BaseModel):
     fix_performed: Optional[str] = None
     root_cause: Optional[str] = None
     notes: Optional[str] = None
+    flag: Optional[str] = None
 
 class ComebackUpdate(BaseModel):
     comeback_date: Optional[date] = None
@@ -62,6 +63,7 @@ class ComebackUpdate(BaseModel):
     fix_performed: Optional[str] = None
     root_cause: Optional[str] = None
     notes: Optional[str] = None
+    flag: Optional[str] = None
 
 class ComebackOut(BaseModel):
     id: int
@@ -77,6 +79,7 @@ class ComebackOut(BaseModel):
     fix_performed: Optional[str]
     root_cause: Optional[str]
     notes: Optional[str]
+    flag: Optional[str]
     is_repeat_vin: bool
     is_demo: bool
     logged_by: Optional[str]

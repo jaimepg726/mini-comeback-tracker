@@ -49,6 +49,10 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise credentials_exception
     return user
+@app.get("/categories")
+def list_categories():
+    return crud.CATEGORIES
+
 @app.post("/token", response_model=schemas.Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = crud.get_user_by_username(db, form_data.username)
@@ -161,6 +165,8 @@ def run_migrations():
         cols = [row[1] for row in cursor.fetchall()]
         if "is_demo" not in cols:
             cursor.execute("ALTER TABLE comebacks ADD COLUMN is_demo BOOLEAN DEFAULT 0 NOT NULL")
+        if "flag" not in cols:
+            cursor.execute("ALTER TABLE comebacks ADD COLUMN flag VARCHAR")
         conn.commit()
         conn.close()
     except Exception as e:

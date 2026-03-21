@@ -4,7 +4,13 @@ from datetime import datetime, timedelta, date
 import bcrypt
 import models, schemas
 
-CATEGORIES = ["Diagnosis","Electrical","Engine","Brake","Suspension","Programming/Coding","Oil/Leaks","CBS Light Reset","Tire Pressure Reset / Tire PSI Incorrect","Tire/Brake Measurements Off","Other"]
+CATEGORIES = [
+    "Diagnosis", "Electrical", "Engine", "Brake", "Suspension",
+    "Programming/Coding", "Oil/Leaks",
+    "CBS Light Reset", "Tire Light Reset",
+    "Tire Pressure Reset / Tire PSI Incorrect", "Tire/Brake Measurements Off",
+    "Other",
+]
 
 def get_user_by_username(db, username):
     return db.query(models.User).filter(models.User.username == username).first()
@@ -104,19 +110,44 @@ def get_dashboard_summary(db):
         tech_cbs = [c for c in all_cbs if c.technician_name == tech.name]
         tech_stats.append({"technician": tech.name, "comebacks": len(tech_cbs), "repeat_vins": sum(1 for c in tech_cbs if c.is_repeat_vin)})
     category_counts = {cat: sum(1 for c in all_cbs if c.repair_category == cat) for cat in CATEGORIES}
-    cutoff = date.today() - timedelta(days=30)
-    recent = [c for c in all_cbs if c.comeback_date >= cutoff]
-    repeat_vins = list(set(c.vin_last7 for c in all_cbs if c.is_repeat_vin and c.vin_last7))
     today = date.today()
+    cutoff_30 = today - timedelta(days=30)
+    cutoff_60 = today - timedelta(days=60)
+    recent = [c for c in all_cbs if c.comeback_date >= cutoff_30]
+    prior_30 = [c for c in all_cbs if cutoff_60 <= c.comeback_date < cutoff_30]
+    repeat_vins = list(set(c.vin_last7 for c in all_cbs if c.is_repeat_vin and c.vin_last7))
     week_start = today - timedelta(days=today.weekday())
     prev_week_start = week_start - timedelta(days=7)
     prev_week_end = week_start - timedelta(days=1)
+    this_week_cbs = [c for c in all_cbs if c.comeback_date >= week_start]
+    # Top category and technician this week
+    week_cats: dict = {}
+    week_techs: dict = {}
+    for c in this_week_cbs:
+        if c.repair_category:
+            week_cats[c.repair_category] = week_cats.get(c.repair_category, 0) + 1
+        week_techs[c.technician_name] = week_techs.get(c.technician_name, 0) + 1
+    top_cat_week = max(week_cats, key=lambda k: week_cats[k]) if week_cats else None
+    top_tech_week = max(week_techs, key=lambda k: week_techs[k]) if week_techs else None
+    top_tech_week_count = week_techs.get(top_tech_week, 0) if top_tech_week else 0
+    # 8-week trend (Mon-based weeks)
+    trend_weeks = []
+    for i in range(7, -1, -1):
+        w_start = week_start - timedelta(days=7 * i)
+        w_end = w_start + timedelta(days=6)
+        cnt = len([c for c in all_cbs if w_start <= c.comeback_date <= w_end])
+        trend_weeks.append({"label": w_start.strftime("%m/%d"), "count": cnt})
     return {
         "total_comebacks": len(all_cbs),
         "total_last_30_days": len(recent),
+        "prev_30_days_count": len(prior_30),
         "repeat_vin_count": len(repeat_vins),
-        "this_week_count": len([c for c in all_cbs if c.comeback_date >= week_start]),
+        "this_week_count": len(this_week_cbs),
         "prev_week_count": len([c for c in all_cbs if prev_week_start <= c.comeback_date <= prev_week_end]),
+        "top_category_week": top_cat_week,
+        "top_tech_week": top_tech_week,
+        "top_tech_week_count": top_tech_week_count,
+        "trend_weeks": trend_weeks,
         "technician_stats": tech_stats,
         "category_counts": category_counts,
         "recent_comebacks": [{"id": c.id, "comeback_date": str(c.comeback_date), "technician_name": c.technician_name, "vehicle": c.vehicle, "repair_category": c.repair_category, "is_repeat_vin": c.is_repeat_vin, "vin_last7": c.vin_last7} for c in sorted(recent, key=lambda x: x.comeback_date, reverse=True)[:10]]
@@ -130,20 +161,32 @@ def get_weekly_report(db, start_date=None, end_date=None):
         end = date.today()
         cutoff = end - timedelta(days=end.weekday())
     week_cbs = db.query(models.Comeback).filter(models.Comeback.comeback_date >= cutoff, models.Comeback.comeback_date <= end, models.Comeback.is_demo == False).all()
-    by_tech = {}
+    by_tech: dict = {}
     for c in week_cbs:
         by_tech.setdefault(c.technician_name, []).append(c)
-    by_category = {}
+    by_category: dict = {}
     for c in week_cbs:
         if c.repair_category:
             by_category[c.repair_category] = by_category.get(c.repair_category, 0) + 1
+    repeat_vins_week = list(set(c.vin_last7 for c in week_cbs if c.is_repeat_vin and c.vin_last7))
+    top_cat = max(by_category, key=lambda k: by_category[k]) if by_category else None
+    top_tech = max(by_tech, key=lambda k: len(by_tech[k])) if by_tech else None
+    highlights = {
+        "top_category": top_cat,
+        "top_category_count": by_category.get(top_cat, 0) if top_cat else 0,
+        "top_technician": top_tech,
+        "top_technician_count": len(by_tech.get(top_tech, [])) if top_tech else 0,
+        "repeat_vin_count": len(repeat_vins_week),
+        "techs_with_comebacks": len([k for k, v in by_tech.items() if len(v) > 0]),
+    }
     return {
         "week_start": str(cutoff), "week_end": str(end),
         "total_comebacks": len(week_cbs),
+        "highlights": highlights,
         "by_technician": {k: len(v) for k, v in by_tech.items()},
         "by_category": by_category,
-        "repeat_vins_this_week": list(set(c.vin_last7 for c in week_cbs if c.is_repeat_vin and c.vin_last7)),
-        "comebacks": [{"id": c.id, "comeback_date": str(c.comeback_date), "ro_number": c.ro_number, "technician_name": c.technician_name, "vehicle": c.vehicle, "repair_category": c.repair_category, "comeback_concern": c.comeback_concern, "is_repeat_vin": c.is_repeat_vin} for c in sorted(week_cbs, key=lambda x: x.comeback_date, reverse=True)]
+        "repeat_vins_this_week": repeat_vins_week,
+        "comebacks": [{"id": c.id, "comeback_date": str(c.comeback_date), "ro_number": c.ro_number, "technician_name": c.technician_name, "vehicle": c.vehicle, "repair_category": c.repair_category, "comeback_concern": c.comeback_concern, "is_repeat_vin": c.is_repeat_vin, "flag": c.flag} for c in sorted(week_cbs, key=lambda x: x.comeback_date, reverse=True)]
     }
 
 def get_comebacks_csv(db, start_date=None, end_date=None, technician=None, category=None, repeat_only=False):

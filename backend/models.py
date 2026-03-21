@@ -35,6 +35,7 @@ class Comeback(Base):
     fix_performed = Column(Text, nullable=True)
     root_cause = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
+    flag = Column(String, nullable=True)
     is_repeat_vin = Column(Boolean, default=False)
     is_demo = Column(Boolean, default=False, nullable=False)
     logged_by = Column(String, nullable=True)
